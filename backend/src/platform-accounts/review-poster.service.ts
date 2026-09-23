@@ -89,12 +89,16 @@ export class ReviewPosterService {
     if (!this.enabled) return { posted: 0, failed: 0 };
 
     const now = new Date();
+    // Auto-post only genuinely new reviews (on/after the go-live cutoff) so the
+    // historical backlog is never auto-replied. Manual approvals are exempt.
+    const cutoff = this.env.AUTO_POST_MIN_REVIEW_DATE;
+    const autoDraftDue = cutoff
+      ? { status: ReplyStatus.GENERATED, autoPostAt: { not: null, lte: now }, review: { reviewedAt: { gte: cutoff } } }
+      : { status: ReplyStatus.GENERATED, autoPostAt: { not: null, lte: now } };
+
     const due = await this.prisma.reply.findMany({
       where: {
-        OR: [
-          { status: ReplyStatus.APPROVED },
-          { status: ReplyStatus.GENERATED, autoPostAt: { not: null, lte: now } },
-        ],
+        OR: [{ status: ReplyStatus.APPROVED }, autoDraftDue],
       },
       orderBy: { autoPostAt: "asc" },
       take: 50,

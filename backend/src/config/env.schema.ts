@@ -75,6 +75,12 @@ export const envSchema = z.object({
     (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
     z.boolean().default(false),
   ),
+
+  // Auto-post only reviews left on/after this date (the go-live date), so the
+  // historical backlog is never auto-replied - only genuinely new reviews are.
+  // Leave blank to auto-post all due drafts (backlog included). Manual approvals
+  // always post regardless of this cutoff.
+  AUTO_POST_MIN_REVIEW_DATE: z.preprocess(blankToUndefined, z.coerce.date().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;
