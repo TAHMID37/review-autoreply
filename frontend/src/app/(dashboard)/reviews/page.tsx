@@ -8,6 +8,27 @@ import { apiFetch } from "@/lib/api-client";
 import type { Brand, Review, ReviewStats } from "@/types/api";
 
 type Tab = "all" | "needsApproval" | "autoReplied";
+type DateRange = "all" | "today" | "7d" | "30d";
+
+const DATE_RANGE_LABEL: Record<DateRange, string> = {
+  all: "All time",
+  today: "Today",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+};
+
+/** True if `iso` falls within the selected recency window. */
+function withinRange(iso: string, range: DateRange): boolean {
+  if (range === "all") return true;
+  const t = new Date(iso).getTime();
+  if (range === "today") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return t >= start.getTime();
+  }
+  const days = range === "7d" ? 7 : 30;
+  return t >= Date.now() - days * 24 * 60 * 60 * 1000;
+}
 
 export default function ReviewsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -20,6 +41,7 @@ export default function ReviewsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [dateRange, setDateRange] = useState<DateRange>("all");
 
   const load = useCallback(async () => {
     setError(null);
@@ -52,18 +74,19 @@ export default function ReviewsPage() {
       const status = review.reply?.status;
       if (tab === "needsApproval" && status !== "PENDING_APPROVAL") return false;
       if (tab === "autoReplied" && status !== "POSTED" && status !== "APPROVED") return false;
+      if (!withinRange(review.reviewedAt, dateRange)) return false;
       if (!term) return true;
       return (
         review.reviewerName.toLowerCase().includes(term) ||
         review.reviewText.toLowerCase().includes(term)
       );
     });
-  }, [reviews, tab, search]);
+  }, [reviews, tab, search, dateRange]);
 
   // Reset to the first page whenever the filtered set changes.
   useEffect(() => {
     setPage(1);
-  }, [tab, search, selectedBrandId, pageSize]);
+  }, [tab, search, selectedBrandId, pageSize, dateRange]);
 
   const pagedReviews = useMemo(
     () => visibleReviews.slice((page - 1) * pageSize, page * pageSize),
@@ -95,11 +118,22 @@ export default function ReviewsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold text-ink">Google Reviews</h1>
+        <select
+          value={dateRange}
+          onChange={(event) => setDateRange(event.target.value as DateRange)}
+          className="ml-auto rounded-md border border-gray-300 px-2 py-1.5 text-sm text-ink focus:border-brand-pink focus:outline-none"
+        >
+          {(Object.keys(DATE_RANGE_LABEL) as DateRange[]).map((r) => (
+            <option key={r} value={r}>
+              {DATE_RANGE_LABEL[r]}
+            </option>
+          ))}
+        </select>
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search reviews…"
-          className="ml-auto w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-pink focus:outline-none"
+          className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-pink focus:outline-none"
         />
       </div>
 
