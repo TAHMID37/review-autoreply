@@ -265,6 +265,9 @@ model Reply {
   postedAt         DateTime?
   platformReplyId  String?
   failureReason    String?
+  /// When an auto-postable draft becomes eligible to post (draft time + the
+  /// rule's delay). Null for replies held for manual approval.
+  autoPostAt       DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 

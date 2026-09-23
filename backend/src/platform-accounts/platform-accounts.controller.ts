@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Inject, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Inject, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Response } from "express";
 import { Env } from "../config/env.schema";
@@ -6,6 +6,7 @@ import { APP_ENV } from "../config/env.token";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { GoogleOAuthService } from "./google-oauth.service";
 import { PlatformAccountsService } from "./platform-accounts.service";
+import { ReviewPosterService } from "./review-poster.service";
 import { ReviewsSyncService } from "./reviews-sync.service";
 
 @Controller("platform-accounts")
@@ -14,6 +15,7 @@ export class PlatformAccountsController {
     private readonly oauth: GoogleOAuthService,
     private readonly accounts: PlatformAccountsService,
     private readonly sync: ReviewsSyncService,
+    private readonly poster: ReviewPosterService,
     @Inject(APP_ENV) private readonly env: Env,
   ) {}
 
@@ -59,6 +61,17 @@ export class PlatformAccountsController {
   @UseGuards(JwtAuthGuard)
   runSync() {
     return this.sync.syncAll();
+  }
+
+  /**
+   * Post one reply to Google now (writes to the review's location as the owner).
+   * Gated by AUTO_POST_ENABLED; used to verify a single reply end-to-end before
+   * enabling full auto-posting. Returns the updated reply (POSTED or FAILED).
+   */
+  @Post("replies/:id/post")
+  @UseGuards(JwtAuthGuard)
+  postReply(@Param("id") id: string) {
+    return this.poster.postReply(id);
   }
 
   // ── Signed state (brandId + HMAC) ──────────────────────────────────────────

@@ -7,6 +7,7 @@ import { ReviewProcessorService } from "../reviews/review-processor.service";
 import { ReviewsService } from "../reviews/reviews.service";
 import { GoogleReviewsClient } from "./google-reviews.client";
 import { PlatformAccountsService } from "./platform-accounts.service";
+import { ReviewPosterService } from "./review-poster.service";
 
 export interface SyncSummary {
   accountsSynced: number;
@@ -34,6 +35,7 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly google: GoogleReviewsClient,
     private readonly reviews: ReviewsService,
     private readonly processor: ReviewProcessorService,
+    private readonly poster: ReviewPosterService,
     @Inject(APP_ENV) private readonly env: Env,
   ) {}
 
@@ -97,6 +99,14 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
       const result = await this.processor.processPending();
       summary.processed = result.processed;
       summary.failed = result.failed;
+
+      // Post anything now due (auto-postable drafts past their delay, and manual
+      // approvals). No-op unless AUTO_POST_ENABLED, so this stays draft-only
+      // until go-live.
+      const postResult = await this.poster.postDue();
+      if (postResult.posted || postResult.failed) {
+        this.logger.log(`Auto-post: ${postResult.posted} posted, ${postResult.failed} failed.`);
+      }
 
       await this.prisma.jobRunLog.update({
         where: { id: job.id },

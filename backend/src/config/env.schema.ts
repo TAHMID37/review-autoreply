@@ -67,6 +67,14 @@ export const envSchema = z.object({
     z.boolean().default(false),
   ),
   REVIEW_SYNC_INTERVAL_MIN: z.coerce.number().int().positive().default(15),
+
+  // Master switch for writing replies back to Google. OFF by default so the
+  // system stays draft-only until an explicit go-live. When true, the scheduler
+  // auto-posts due drafts and manual approvals are posted to Google.
+  AUTO_POST_ENABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
+    z.boolean().default(false),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;

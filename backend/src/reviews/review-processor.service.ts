@@ -83,10 +83,17 @@ export class ReviewProcessorService {
     const draftText = selection.draft ?? selection.note ?? "No matching auto-reply rule. Please write a reply manually.";
     const aiModel = selection.templateName ?? "manual";
 
+    // Eligible-to-post time = now + the rule's delay (Birdeye posts after a
+    // delay). Only for auto-postable drafts; held replies have no auto-post time.
+    const autoPostAt =
+      selection.autoPostable && selection.delayHours != null
+        ? new Date(Date.now() + selection.delayHours * 60 * 60 * 1000)
+        : null;
+
     await this.prisma.reply.upsert({
       where: { reviewId: review.id },
-      update: { aiDraft: draftText, status, aiProvider: "birdeye-rule", aiModel },
-      create: { reviewId: review.id, aiDraft: draftText, status, aiProvider: "birdeye-rule", aiModel },
+      update: { aiDraft: draftText, status, aiProvider: "birdeye-rule", aiModel, autoPostAt },
+      create: { reviewId: review.id, aiDraft: draftText, status, aiProvider: "birdeye-rule", aiModel, autoPostAt },
     });
 
     await this.reviews.markProcessed(review.id);
