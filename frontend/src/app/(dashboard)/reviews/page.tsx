@@ -5,30 +5,10 @@ import { ReviewCard } from "@/components/reviews/review-card";
 import { StatTile } from "@/components/reviews/stat-tile";
 import { Pagination } from "@/components/ui/pagination";
 import { apiFetch } from "@/lib/api-client";
+import { DATE_RANGE_LABEL, DATE_RANGES, withinRange, type DateRange } from "@/lib/date-range";
 import type { Brand, Review, ReviewStats } from "@/types/api";
 
 type Tab = "all" | "needsApproval" | "autoReplied";
-type DateRange = "all" | "today" | "7d" | "30d";
-
-const DATE_RANGE_LABEL: Record<DateRange, string> = {
-  all: "All time",
-  today: "Today",
-  "7d": "Last 7 days",
-  "30d": "Last 30 days",
-};
-
-/** True if `iso` falls within the selected recency window. */
-function withinRange(iso: string, range: DateRange): boolean {
-  if (range === "all") return true;
-  const t = new Date(iso).getTime();
-  if (range === "today") {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return t >= start.getTime();
-  }
-  const days = range === "7d" ? 7 : 30;
-  return t >= Date.now() - days * 24 * 60 * 60 * 1000;
-}
 
 export default function ReviewsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -123,7 +103,7 @@ export default function ReviewsPage() {
           onChange={(event) => setDateRange(event.target.value as DateRange)}
           className="ml-auto rounded-md border border-gray-300 px-2 py-1.5 text-sm text-ink focus:border-brand-pink focus:outline-none"
         >
-          {(Object.keys(DATE_RANGE_LABEL) as DateRange[]).map((r) => (
+          {DATE_RANGES.map((r) => (
             <option key={r} value={r}>
               {DATE_RANGE_LABEL[r]}
             </option>

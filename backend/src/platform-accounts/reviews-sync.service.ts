@@ -14,6 +14,7 @@ export interface SyncSummary {
   reviewsSeen: number;
   created: number;
   updated: number;
+  removed: number;
   processed: number;
   failed: number;
 }
@@ -61,12 +62,12 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
   async syncAll(): Promise<SyncSummary> {
     if (this.running) {
       this.logger.warn("Sync already in progress - skipping this run.");
-      return { accountsSynced: 0, reviewsSeen: 0, created: 0, updated: 0, processed: 0, failed: 0 };
+      return { accountsSynced: 0, reviewsSeen: 0, created: 0, updated: 0, removed: 0, processed: 0, failed: 0 };
     }
     this.running = true;
 
     const job = await this.prisma.jobRunLog.create({ data: { jobName: "google-review-sync" } });
-    const summary: SyncSummary = { accountsSynced: 0, reviewsSeen: 0, created: 0, updated: 0, processed: 0, failed: 0 };
+    const summary: SyncSummary = { accountsSynced: 0, reviewsSeen: 0, created: 0, updated: 0, removed: 0, processed: 0, failed: 0 };
 
     try {
       const connected = await this.accounts.listConnected();
@@ -76,7 +77,7 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
 
         for (const link of links) {
           const { accountName, locationName } = splitResource(link.externalLocationId);
-          const reviews = await this.google.listReviews(token, accountName, locationName);
+          const { reviews, allExternalIds } = await this.google.listReviews(token, accountName, locationName);
           for (const r of reviews) {
             summary.reviewsSeen++;
             const outcome = await this.reviews.upsertFromPlatform({
@@ -90,6 +91,14 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
             });
             if (outcome.outcome === "created") summary.created++;
             else if (outcome.outcome === "updated") summary.updated++;
+          }
+          // Reconcile removals: any stored review for this location that Google
+          // no longer serves was filtered/deleted - hide it. Guarded on a
+          // non-empty response so a transient empty/errored fetch never nukes
+          // the location's reviews.
+          if (allExternalIds.length > 0) {
+            const removed = await this.reviews.reconcileRemoved(link.locationId, allExternalIds);
+            summary.removed += removed;
           }
         }
         summary.accountsSynced++;

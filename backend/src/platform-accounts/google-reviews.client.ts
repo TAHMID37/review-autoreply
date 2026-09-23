@@ -31,6 +31,13 @@ export interface GoogleReview {
   reviewedAt: Date;
 }
 
+export interface ListReviewsResult {
+  /** Unanswered reviews, mapped for ingestion. */
+  reviews: GoogleReview[];
+  /** Every review id Google currently serves for the location (answered too). */
+  allExternalIds: string[];
+}
+
 const STAR_WORD_TO_NUMBER: Record<string, number> = {
   ONE: 1,
   TWO: 2,
@@ -60,10 +67,16 @@ export class GoogleReviewsClient {
    * "accounts/{id}", `locationName` is "locations/{id}" (only the numeric id is
    * used, since the v4 reviews endpoint nests it under the account).
    */
-  async listReviews(accessToken: string, accountName: string, locationName: string): Promise<GoogleReview[]> {
+  async listReviews(accessToken: string, accountName: string, locationName: string): Promise<ListReviewsResult> {
     const locationId = locationName.replace(/^locations\//, "");
     const url = `${REVIEWS_BASE}/${accountName}/locations/${locationId}/reviews`;
     const raw = await this.paged<RawReview>(url, accessToken, "reviews");
+
+    // Every review id Google currently serves for this location (answered or
+    // not). Sync uses this to detect reviews it removed since we last saw them.
+    const allExternalIds = raw
+      .map((r) => r.reviewId || r.name)
+      .filter((id): id is string => Boolean(id));
 
     // Only surface reviews we have NOT already answered. A review that already
     // carries an owner `reviewReply` on Google was handled elsewhere (Birdeye),
@@ -74,7 +87,10 @@ export class GoogleReviewsClient {
       this.logger.log(`${locationName}: skipped ${skipped} review(s) already replied to on Google.`);
     }
 
-    return unanswered.map(mapReview).filter((r): r is GoogleReview => r !== null);
+    return {
+      reviews: unanswered.map(mapReview).filter((r): r is GoogleReview => r !== null),
+      allExternalIds,
+    };
   }
 
   /** GETs every page of a list endpoint, following pageToken. Read-only. */

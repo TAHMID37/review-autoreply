@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Reply, ReplyStatus } from "@prisma/client";
 import { Env } from "../config/env.schema";
 import { APP_ENV } from "../config/env.token";
@@ -34,12 +34,13 @@ export class ReviewPosterService {
    * Posts a single reply to Google as the business owner on the review's
    * location, then marks it POSTED (or FAILED with the reason). Idempotent:
    * a reply that is already POSTED is returned untouched.
+   *
+   * This is an explicit, per-reply action (a staff member deliberately posting
+   * one reply), so it is NOT gated by AUTO_POST_ENABLED - only the autonomous
+   * postDue() scheduler is. That keeps bulk auto-posting off until go-live while
+   * still allowing a controlled single post.
    */
   async postReply(replyId: string): Promise<Reply> {
-    if (!this.enabled) {
-      throw new ForbiddenException("Posting is disabled (set AUTO_POST_ENABLED=true to post to Google).");
-    }
-
     const reply = await this.prisma.reply.findUnique({ where: { id: replyId }, include: { review: true } });
     if (!reply) throw new NotFoundException(`Reply ${replyId} not found`);
     if (reply.status === ReplyStatus.POSTED) return reply;

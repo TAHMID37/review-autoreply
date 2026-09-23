@@ -223,6 +223,9 @@ model Review {
   reviewedAt       DateTime
   fetchedAt        DateTime     @default(now())
   status           ReviewStatus @default(NEW)
+  /// Set when the review is no longer returned by the platform (Google filtered
+  /// or the reviewer deleted it). Removed reviews are hidden from the dashboard.
+  removedAt        DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 

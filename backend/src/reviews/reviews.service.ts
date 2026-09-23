@@ -63,10 +63,11 @@ export class ReviewsService {
 
     const isEdited = existing.reviewText !== dto.reviewText || existing.rating !== dto.rating;
     if (!isEdited) {
-      // Already stored and unchanged — just record that we saw it again.
+      // Already stored and unchanged — record that we saw it again (and clear
+      // any stale removed flag, in case it had briefly disappeared).
       await this.prisma.review.update({
         where: { id: existing.id },
-        data: { fetchedAt: new Date() },
+        data: { fetchedAt: new Date(), removedAt: null },
       });
       return { outcome: "unchanged", reviewId: existing.id };
     }
@@ -79,13 +80,15 @@ export class ReviewsService {
         reviewText: dto.reviewText,
         fetchedAt: new Date(),
         status: ReviewStatus.NEW,
+        removedAt: null,
       },
     });
     return { outcome: "updated", reviewId: existing.id };
   }
 
   findAll(filters: ReviewFiltersDto): Promise<ReviewWithDetail[]> {
-    const where: Prisma.ReviewWhereInput = {};
+    // Hide reviews Google no longer serves (filtered/deleted).
+    const where: Prisma.ReviewWhereInput = { removedAt: null };
 
     if (filters.locationId) {
       where.locationId = filters.locationId;
@@ -138,5 +141,22 @@ export class ReviewsService {
       where: { id },
       data: { status: ReviewStatus.PROCESSED },
     });
+  }
+
+  /**
+   * Reconciles a location's reviews against the ids Google still serves:
+   * clears the removed flag on any that reappear, and marks as removed any
+   * stored review Google no longer returns. Returns how many were newly removed.
+   */
+  async reconcileRemoved(locationId: string, presentExternalIds: string[]): Promise<number> {
+    await this.prisma.review.updateMany({
+      where: { locationId, removedAt: { not: null }, externalReviewId: { in: presentExternalIds } },
+      data: { removedAt: null },
+    });
+    const result = await this.prisma.review.updateMany({
+      where: { locationId, removedAt: null, externalReviewId: { notIn: presentExternalIds } },
+      data: { removedAt: new Date() },
+    });
+    return result.count;
   }
 }
