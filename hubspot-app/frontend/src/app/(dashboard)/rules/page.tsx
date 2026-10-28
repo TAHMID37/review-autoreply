@@ -226,7 +226,7 @@ function RuleEditor({
       if (rule) {
         await apiFetch(`/auto-reply-rules/${rule.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       } else {
-        await apiFetch(`/auto-reply-rules`, { method: "POST", body: JSON.stringify({ brandId, ...payload }) });
+        await apiFetch(`/auto-reply-rules`, { method: "POST", body: JSON.stringify(payload) });
       }
       onSaved();
     } catch (e) {

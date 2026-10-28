@@ -143,7 +143,8 @@ export class WidgetsService {
     };
   }
 
-  private isPreviewOrigin(origin: string | undefined): boolean {
+  /** Our own dashboard (the widget editor's live preview). */
+  isPreviewOrigin(origin: string | undefined): boolean {
     if (!origin) return false;
     try {
       return new URL(origin).origin === new URL(this.env.WEB_APP_URL).origin;

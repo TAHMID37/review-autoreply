@@ -4,18 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StatTile } from "@/components/reviews/stat-tile";
 import { responseScopeLabel } from "@/lib/response-scope";
-import { APP_BRAND } from "@/lib/app-brand";
 import { apiFetch } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
-import type { Review, ReviewStats } from "@/types/api";
+import type { Review, ReviewStats, SetupStatus } from "@/types/api";
 
 export default function DashboardHomePage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [pending, setPending] = useState<Review[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
 
   useEffect(() => {
+    apiFetch<SetupStatus>("/brands/me/setup").then(setSetup).catch(() => undefined);
     Promise.all([
       apiFetch<ReviewStats>("/reports/stats"),
       apiFetch<Review[]>("/reviews?needsApproval=true"),
@@ -32,9 +33,19 @@ export default function DashboardHomePage() {
       <div>
         <h1 className="text-xl font-bold text-ink">Welcome{user?.name ? `, ${user.name}` : ""}</h1>
         <p className="mt-1 text-sm text-muted">
-          {APP_BRAND.displayName} - Google reviews and auto-replies across every campus.
+          {user?.brand.name} - Google reviews and auto-replies across every location.
         </p>
       </div>
+
+      {setup && !setup.complete && (
+        <Link
+          href="/setup"
+          className="block rounded-xl border border-brand-pink/30 bg-brand-pink/5 p-4 text-sm text-ink hover:bg-brand-pink/10"
+        >
+          <span className="font-semibold">Finish setting up</span> - connect Google and pick your locations to start
+          syncing reviews. <span className="font-semibold text-brand-pink">Continue setup →</span>
+        </Link>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

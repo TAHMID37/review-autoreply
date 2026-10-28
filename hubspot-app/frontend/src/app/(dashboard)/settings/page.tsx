@@ -1,434 +1,319 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { Brand, LoginResponse, PlatformAccount, SyncSummary } from "@/types/api";
+import { useEffect, useState } from "react";
+import { AutoReplyCard } from "@/components/setup/auto-reply-card";
+import { GoogleConnectCard } from "@/components/setup/google-connect-card";
+import { LocationPicker } from "@/components/setup/location-picker";
+import {
+  AdminOnlyHint,
+  Card,
+  errorText,
+  Field,
+  FIELD_CLASS,
+  Notice,
+  PRIMARY_BUTTON,
+  SECONDARY_BUTTON,
+} from "@/components/setup/ui";
 import { apiFetch } from "@/lib/api-client";
-import { APP_BRAND } from "@/lib/app-brand";
 import { useAuth } from "@/lib/auth-context";
+import type { AuthUser, Brand, NewContactPolicy } from "@/types/api";
 
 export default function SettingsPage() {
-  const [brands, setBrands] = useState<Brand[] | null>(null);
+  const [brand, setBrand] = useState<Brand | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     apiFetch<Brand[]>("/brands")
-      .then(setBrands)
+      .then((list) => setBrand(list[0] ?? null))
       .catch((err) => setError(err.message));
   }, []);
 
-  async function saveTone(brand: Brand, tone: string) {
-    const updated = await apiFetch<Brand>(`/brands/${brand.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ tone }),
-    });
-    setBrands((prev) => prev?.map((b) => (b.id === updated.id ? updated : b)) ?? null);
+  /** Saves part of the business settings and returns the updated record. */
+  async function save(patch: Partial<Brand> & { slackWebhookUrl?: string }) {
+    if (!brand) return;
+    setBrand(await apiFetch<Brand>(`/brands/${brand.id}`, { method: "PATCH", body: JSON.stringify(patch) }));
   }
 
+  if (error) return <Notice kind="error">{error}</Notice>;
+  if (!brand) return <p className="text-sm text-muted">Loading…</p>;
+
   return (
-    <div className="space-y-8">
-      <AccountSection />
-
-      <GoogleConnectionSection brands={brands} />
-
+    <div className="max-w-3xl space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-ink">Brand tone & rules</h1>
+        <h1 className="text-xl font-bold text-ink">Settings</h1>
         <p className="mt-1 text-sm text-muted">
-          This is the instruction the AI reads before drafting a reply for each brand.
+          For {brand.name}
+          {brand.hubspotDomain ? ` (HubSpot account ${brand.hubspotDomain})` : ""}.
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      {brands?.map((brand) => (
-        <BrandToneEditor key={brand.id} brand={brand} onSave={(tone) => saveTone(brand, tone)} />
-      ))}
+      <BusinessCard brand={brand} onSave={save} />
+      <GoogleConnectCard returnTo="settings" onChange={() => setReloadKey((k) => k + 1)} />
+      <LocationPicker reloadKey={reloadKey} />
+      <AutoReplyCard brand={brand} onChange={setBrand} />
+      <HubSpotContactsCard brand={brand} onSave={save} />
+      <NotificationsCard brand={brand} onSave={save} />
+      <TeamCard />
+      <UninstallCard brand={brand} />
     </div>
   );
 }
 
-// ── Your own login ────────────────────────────────────────────────────────────
+type SaveFn = (patch: Partial<Brand> & { slackWebhookUrl?: string }) => Promise<void>;
 
-/**
- * Lets whoever is signed in change their own name, email and password without
- * anyone touching the server. Each dashboard has its own separate login, so a
- * change here only affects this brand's site.
- */
-function AccountSection() {
-  const { user, applySession } = useAuth();
-
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-
+/** Wraps a save so each card shows its own saving / saved / error state. */
+function useSaver(onSave: SaveFn) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-
-  // Fill the form once the signed-in user has loaded.
-  useEffect(() => {
-    if (!user) return;
-    setName(user.name);
-    setEmail(user.email);
-  }, [user]);
-
-  const detailsChanged = user !== null && (name.trim() !== user.name || email.trim() !== user.email);
-  const hasChanges = detailsChanged || newPassword.length > 0;
-
-  async function handleSave() {
+  const [saved, setSaved] = useState(false);
+  async function run(patch: Parameters<SaveFn>[0]) {
     setError(null);
-    setSaved(null);
-
-    if (newPassword && newPassword !== confirmPassword) {
-      setError("The two new passwords do not match.");
-      return;
-    }
-    if (newPassword && newPassword.length < 8) {
-      setError("New password must be at least 8 characters.");
-      return;
-    }
-
+    setSaved(false);
     setIsSaving(true);
     try {
-      const session = await apiFetch<LoginResponse>("/auth/account", {
-        method: "PATCH",
-        body: JSON.stringify({
-          currentPassword,
-          name: name.trim(),
-          email: email.trim(),
-          ...(newPassword ? { newPassword } : {}),
-        }),
-      });
-      applySession(session);
-      setNewPassword("");
-      setConfirmPassword("");
-      setCurrentPassword("");
-      setSaved(
-        newPassword
-          ? "Saved. Use your new password the next time you sign in."
-          : "Saved.",
-      );
+      await onSave(patch);
+      setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your changes");
+      setError(errorText(err, "Could not save"));
     } finally {
       setIsSaving(false);
     }
   }
+  return { run, isSaving, error, saved };
+}
+
+function BusinessCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
+  const [name, setName] = useState(brand.name);
+  const [tone, setTone] = useState(brand.tone);
+  const { run, isSaving, error, saved } = useSaver(onSave);
+  const changed = name.trim() !== brand.name || tone !== brand.tone;
 
   return (
-    <div>
-      <h1 className="text-lg font-semibold text-ink">Your login</h1>
-      <p className="mt-1 text-sm text-muted">
-        The email and password you use to sign in here. This is the {APP_BRAND.displayName} dashboard
-        only &mdash; the other brand&apos;s dashboard has its own separate login.
-      </p>
-
-      <div className="mt-3 rounded-lg border border-line bg-white p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Your name">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-              className={FIELD_CLASS}
-            />
-          </Field>
-          <Field label="Email address" hint="This is also your username.">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="username"
-              className={FIELD_CLASS}
-            />
-          </Field>
-          <Field label="New password" hint="Leave blank to keep your current one.">
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              className={FIELD_CLASS}
-            />
-          </Field>
-          <Field label="Confirm new password">
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              disabled={newPassword.length === 0}
-              className={`${FIELD_CLASS} disabled:bg-gray-50`}
-            />
-          </Field>
-        </div>
-
-        <div className="mt-4 border-t border-line pt-4">
-          <Field label="Current password" hint="Required to save any change above.">
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              autoComplete="current-password"
-              className={`${FIELD_CLASS} sm:w-1/2`}
-            />
-          </Field>
-        </div>
-
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        {saved && <p className="mt-3 text-sm text-green-700">{saved}</p>}
-
-        <button
-          onClick={handleSave}
-          disabled={isSaving || !hasChanges || currentPassword.length === 0}
-          className="mt-4 rounded-md bg-brand-pink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {isSaving ? "Saving\u2026" : "Save changes"}
+    <Card
+      title="Business"
+      description="Your business name fills ${Business name} in reply templates and signs the replies saved in HubSpot."
+    >
+      <div className="space-y-4">
+        <Field label="Business name">
+          <input value={name} onChange={(e) => setName(e.target.value)} className={FIELD_CLASS} />
+        </Field>
+        <Field label="Reply tone" hint="Used if AI-written replies are switched on.">
+          <textarea value={tone} onChange={(e) => setTone(e.target.value)} rows={2} className={FIELD_CLASS} />
+        </Field>
+        {error && <Notice kind="error">{error}</Notice>}
+        {saved && !changed && <Notice kind="success">Saved.</Notice>}
+        <button onClick={() => run({ name: name.trim(), tone })} disabled={!changed || isSaving || !name.trim()} className={PRIMARY_BUTTON}>
+          {isSaving ? "Saving…" : "Save"}
         </button>
       </div>
-    </div>
+    </Card>
   );
 }
 
-const FIELD_CLASS =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-ink focus:border-brand-pink focus:outline-none focus:ring-1 focus:ring-brand-pink";
+function HubSpotContactsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
+  const { run, isSaving, error } = useSaver(onSave);
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="text-sm font-medium text-ink">{label}</span>
-      {hint && <span className="ml-1 text-xs text-muted">{hint}</span>}
-      <div className="mt-1">{children}</div>
-    </label>
+    <Card
+      title="Reviews in HubSpot"
+      description="Each Google review is saved as a note on the reviewer's HubSpot contact. We only add notes and new contacts - we never change or delete a contact you already had."
+    >
+      <div className="space-y-4">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-brand-pink"
+            checked={brand.crmSyncEnabled}
+            disabled={isSaving}
+            onChange={(e) => run({ crmSyncEnabled: e.target.checked })}
+          />
+          Save reviews to HubSpot contacts
+        </label>
+
+        <fieldset disabled={!brand.crmSyncEnabled || isSaving} className="space-y-2 disabled:opacity-50">
+          <legend className="text-sm font-medium text-ink">When no existing contact matches the reviewer</legend>
+          {(
+            [
+              ["ALL_REVIEWERS", "Create a contact for every reviewer (recommended)"],
+              ["COMMENTERS_ONLY", "Only create one when the reviewer left a comment"],
+            ] as [NewContactPolicy, string][]
+          ).map(([value, label]) => (
+            <label key={value} className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="radio"
+                name="newContactPolicy"
+                className="h-4 w-4 accent-brand-pink"
+                checked={brand.newContactPolicy === value}
+                onChange={() => run({ newContactPolicy: value })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+
+        <p className="text-xs leading-relaxed text-muted">
+          Google only shares the reviewer&apos;s display name, so matching is by name. If more than one contact could be the
+          reviewer, we create a new contact and tick <em>Possible duplicate (Google review)</em> on it so you can merge it.
+          Contacts we create have <em>Created from: Google Review</em>, so you can filter a list of them.
+        </p>
+        {error && <Notice kind="error">{error}</Notice>}
+      </div>
+    </Card>
   );
 }
 
+function NotificationsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
+  const [emails, setEmails] = useState(brand.alertEmails.join(", "));
+  const [slack, setSlack] = useState("");
+  const { run, isSaving, error, saved } = useSaver(onSave);
 
-// ── Google Business Profile connection ────────────────────────────────────────
+  const parsed = emails
+    .split(/[\s,;]+/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const changed = parsed.join(",") !== brand.alertEmails.join(",") || slack.trim() !== "";
 
-/** Reads the `?connected=…` params the OAuth callback redirects back with. */
-function readReturnBanner(): { kind: "success" | "error"; message: string } | null {
-  if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const connected = params.get("connected");
-  if (connected === "1") {
-    const locations = params.get("locations");
-    return {
-      kind: "success",
-      message: `Google account connected. ${locations ?? 0} location(s) linked.`,
-    };
-  }
-  if (connected === "0") {
-    return {
-      kind: "error",
-      message: `Could not connect Google: ${params.get("error") ?? "unknown error"}`,
-    };
-  }
-  return null;
+  return (
+    <Card title="Approval alerts" description="Who hears about a review waiting for a person to approve it.">
+      <div className="space-y-4">
+        <Field label="Email to" hint="Separate several with commas.">
+          <input value={emails} onChange={(e) => setEmails(e.target.value)} className={FIELD_CLASS} placeholder="you@business.com" />
+        </Field>
+        <Field label="Slack webhook" hint={brand.slackConfigured ? "Set. Paste a new one to replace it." : "Optional."}>
+          <input
+            value={slack}
+            onChange={(e) => setSlack(e.target.value)}
+            className={FIELD_CLASS}
+            placeholder="https://hooks.slack.com/services/…"
+          />
+        </Field>
+        {error && <Notice kind="error">{error}</Notice>}
+        {saved && !changed && <Notice kind="success">Saved.</Notice>}
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              await run({ alertEmails: parsed, ...(slack.trim() ? { slackWebhookUrl: slack.trim() } : {}) });
+              setSlack("");
+            }}
+            disabled={!changed || isSaving}
+            className={PRIMARY_BUTTON}
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+          {brand.slackConfigured && (
+            <button onClick={() => run({ slackWebhookUrl: "" })} disabled={isSaving} className={SECONDARY_BUTTON}>
+              Remove Slack
+            </button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
 }
 
-function GoogleConnectionSection({ brands }: { brands: Brand[] | null }) {
-  const [accounts, setAccounts] = useState<PlatformAccount[] | null>(null);
+function TeamCard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const [users, setUsers] = useState<AuthUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [connectingBrandId, setConnectingBrandId] = useState<string | null>(null);
-  const [banner, setBanner] = useState<{ kind: "success" | "error"; message: string } | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
 
-  const loadAccounts = useCallback(() => {
-    apiFetch<PlatformAccount[]>("/platform-accounts")
-      .then(setAccounts)
+  useEffect(() => {
+    apiFetch<AuthUser[]>("/users")
+      .then(setUsers)
       .catch((err) => setError(err.message));
   }, []);
 
-  useEffect(() => {
-    loadAccounts();
-
-    // Surface the outcome of a just-completed OAuth round-trip, then strip the
-    // query params so a refresh does not re-show the banner.
-    const returned = readReturnBanner();
-    if (returned) {
-      setBanner(returned);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, [loadAccounts]);
-
-  async function connect(brandId: string) {
+  async function setRole(id: string, role: AuthUser["role"]) {
     setError(null);
-    setConnectingBrandId(brandId);
     try {
-      const { authUrl } = await apiFetch<{ authUrl: string }>(
-        `/platform-accounts/google/connect?brandId=${encodeURIComponent(brandId)}`,
-      );
-      // Full-page redirect: the callback returns the browser to /settings with
-      // the ?connected=… result, which the banner above picks up.
-      window.location.href = authUrl;
+      setUsers(await apiFetch<AuthUser[]>(`/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start Google connect");
-      setConnectingBrandId(null);
+      setError(errorText(err, "Could not change the role"));
     }
   }
-
-  async function syncNow() {
-    setError(null);
-    setIsSyncing(true);
-    setSyncSummary(null);
-    try {
-      const summary = await apiFetch<SyncSummary>("/platform-accounts/sync", { method: "POST" });
-      setSyncSummary(summary);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
-  // A brand is "connected" when a Google account actually covers its campuses -
-  // not by which brand the account was filed under. One agency login can cover
-  // several brands, so coverage is derived from the linked campuses.
-  const coverageByBrand = new Map<string, { accountEmail: string; status: PlatformAccount["status"]; locationCount: number }>();
-  for (const account of accounts ?? []) {
-    for (const c of account.coverage) {
-      const prev = coverageByBrand.get(c.brandId);
-      coverageByBrand.set(c.brandId, {
-        accountEmail: account.accountEmail,
-        status: account.status,
-        locationCount: (prev?.locationCount ?? 0) + c.locationCount,
-      });
-    }
-  }
-  const hasAnyConnection = (accounts?.length ?? 0) > 0;
 
   return (
-    <section>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold text-ink">Google Business Profile</h1>
-          <p className="mt-1 text-sm text-muted">
-            Connect each brand&apos;s Google account to pull in reviews. Read-only: nothing is posted
-            back to Google.
-          </p>
-        </div>
-        <button
-          onClick={syncNow}
-          disabled={isSyncing || !hasAnyConnection}
-          className="shrink-0 rounded-md border border-line bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface disabled:opacity-50"
-          title={hasAnyConnection ? "Pull the latest reviews now" : "Connect an account first"}
-        >
-          {isSyncing ? "Syncing…" : "Sync now"}
-        </button>
-      </div>
-
-      {banner && (
-        <p
-          className={`mt-3 rounded-md border p-3 text-sm ${
-            banner.kind === "success"
-              ? "border-green-200 bg-green-50 text-green-800"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {banner.message}
-        </p>
-      )}
-
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-      {syncSummary && (
-        <p className="mt-3 rounded-md border border-line bg-surface p-3 text-sm text-ink">
-          Synced {syncSummary.accountsSynced} account(s): {syncSummary.reviewsSeen} review(s) seen,{" "}
-          {syncSummary.created} new, {syncSummary.updated} edited, {syncSummary.processed} drafted
-          {syncSummary.failed > 0 ? `, ${syncSummary.failed} failed` : ""}.
-        </p>
-      )}
-
-      <div className="mt-4 space-y-3">
-        {brands === null && <p className="text-sm text-muted">Loading brands…</p>}
-        {brands?.map((brand) => {
-          const cov = coverageByBrand.get(brand.id);
-          return (
-            <div
-              key={brand.id}
-              className="flex items-center justify-between rounded-lg border border-line bg-white p-4"
-            >
-              <div>
-                <h2 className="font-medium text-ink">{brand.name}</h2>
-                {cov ? (
-                  <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-                    <StatusDot status={cov.status} />
-                    <span>
-                      Connected via {cov.accountEmail} · {cov.locationCount}{" "}
-                      {cov.locationCount === 1 ? "campus" : "campuses"}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-muted">Not connected.</p>
-                )}
-              </div>
-              {cov ? (
-                <button
-                  onClick={() => connect(brand.id)}
-                  disabled={connectingBrandId !== null}
-                  className="shrink-0 text-sm font-medium text-muted underline-offset-2 hover:underline disabled:opacity-50"
-                  title="Re-run Google sign-in for this account (safe - updates the existing connection, no duplicate)"
-                >
-                  {connectingBrandId === brand.id ? "Redirecting…" : "Reconnect"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => connect(brand.id)}
-                  disabled={connectingBrandId !== null}
-                  className="shrink-0 rounded-md bg-brand-pink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {connectingBrandId === brand.id ? "Redirecting…" : "Connect Google"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <Card
+      title="Team"
+      description="Anyone in your HubSpot account can sign in. The person who installed the app is an admin; everyone else starts as staff (can approve replies, can't change billing or consent)."
+    >
+      {error && <Notice kind="error">{error}</Notice>}
+      <ul className="divide-y divide-line rounded-lg border border-line">
+        {users?.map((u) => (
+          <li key={u.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+            <span className="min-w-0 truncate text-ink">
+              {u.name} <span className="text-muted">· {u.email}</span>
+            </span>
+            {isAdmin && u.id !== user?.id ? (
+              <select
+                value={u.role}
+                onChange={(e) => setRole(u.id, e.target.value as AuthUser["role"])}
+                className="rounded-md border border-line px-2 py-1 text-sm"
+              >
+                <option value="ADMIN">Admin</option>
+                <option value="STAFF">Staff</option>
+              </select>
+            ) : (
+              <span className="text-xs font-medium text-muted">{u.role === "ADMIN" ? "Admin" : "Staff"}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
-function StatusDot({ status }: { status: PlatformAccount["status"] }) {
-  const color =
-    status === "CONNECTED" ? "bg-green-500" : status === "ERROR" ? "bg-red-500" : "bg-gray-400";
-  return <span className={`inline-block h-2 w-2 rounded-full ${color}`} aria-hidden />;
-}
+function UninstallCard({ brand }: { brand: Brand }) {
+  const { user, logout } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const [deleteData, setDeleteData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-// ── Brand tone editor ─────────────────────────────────────────────────────────
-
-function BrandToneEditor({ brand, onSave }: { brand: Brand; onSave: (tone: string) => Promise<void> }) {
-  const [tone, setTone] = useState(brand.tone);
-  const [isSaving, setIsSaving] = useState(false);
-
-  async function handleSave() {
-    setIsSaving(true);
+  async function uninstall() {
+    const warning = deleteData
+      ? `Uninstall and permanently delete all of ${brand.name}'s data (reviews, reviewer names, settings)? This cannot be undone.`
+      : `Uninstall the app from ${brand.name}'s HubSpot account? Syncing and auto-replies stop and billing is cancelled. Your data is kept in case you reinstall.`;
+    if (!window.confirm(warning)) return;
+    setBusy(true);
+    setError(null);
     try {
-      await onSave(tone);
-    } finally {
-      setIsSaving(false);
+      await apiFetch("/hubspot/uninstall", { method: "POST", body: JSON.stringify({ deleteData }) });
+      logout();
+      window.location.href = "/login";
+    } catch (err) {
+      setError(errorText(err, "Could not uninstall"));
+      setBusy(false);
     }
   }
 
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
-      <h2 className="font-medium text-ink">{brand.name}</h2>
-      <textarea
-        value={tone}
-        onChange={(e) => setTone(e.target.value)}
-        rows={3}
-        className="mt-2 w-full rounded-md border border-gray-300 p-2 text-sm focus:border-brand-pink focus:outline-none focus:ring-1 focus:ring-brand-pink"
-      />
-      <button
-        onClick={handleSave}
-        disabled={isSaving || tone === brand.tone}
-        className="mt-2 rounded-md bg-brand-pink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {isSaving ? "Saving…" : "Save"}
-      </button>
-    </div>
+    <Card
+      title="Uninstall"
+      description="Removes the app from your HubSpot account and cancels billing. Notes and contacts already in HubSpot stay there."
+    >
+      <div className="space-y-3">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-red-600"
+            checked={deleteData}
+            disabled={!isAdmin}
+            onChange={(e) => setDeleteData(e.target.checked)}
+          />
+          Also delete all our data for this business
+        </label>
+        {error && <Notice kind="error">{error}</Notice>}
+        <button
+          onClick={uninstall}
+          disabled={!isAdmin || busy}
+          className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+        >
+          {busy ? "Uninstalling…" : "Uninstall app"}
+        </button>
+        <AdminOnlyHint isAdmin={isAdmin} />
+      </div>
+    </Card>
   );
 }

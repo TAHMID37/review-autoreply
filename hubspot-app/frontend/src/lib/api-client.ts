@@ -1,5 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const TOKEN_STORAGE_KEY = "review-autoreply:token";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4020";
+const TOKEN_STORAGE_KEY = "review-autoreply-hubspot:token";
 const HTTP_NO_CONTENT = 204;
 
 export function getStoredToken(): string | null {

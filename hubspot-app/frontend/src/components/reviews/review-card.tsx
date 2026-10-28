@@ -59,6 +59,8 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
             </p>
           )}
 
+          <HubSpotBadge review={review} />
+
           {reply && (
             <div
               className={`mt-3 rounded-md border p-3 ${
@@ -67,7 +69,7 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
             >
               <div className="flex gap-2">
                 <span className="mt-0.5 h-fit rounded bg-brand-navy px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  {repliedOnGoogle ? "Owner" : "AI"}
+                  {repliedOnGoogle ? "Owner" : "Reply"}
                 </span>
                 {isEditing ? (
                   <textarea
@@ -150,4 +152,23 @@ function StatusBadge({ status }: { status?: string }) {
     return <span className="rounded px-2 py-0.5 text-[11px] bg-gray-100 text-gray-500">Awaiting reply</span>;
   }
   return <span className={`rounded px-2 py-0.5 text-[11px] ${badge.className}`}>{badge.label}</span>;
+}
+
+/** Where this review sits in HubSpot: which contact it was saved under. */
+function HubSpotBadge({ review }: { review: Review }) {
+  if (review.hubspotSyncError) {
+    return <p className="mt-2 text-xs text-amber-700">Not saved to HubSpot yet: {review.hubspotSyncError}</p>;
+  }
+  const label =
+    review.hubspotMatch === "EXISTING"
+      ? "Saved to existing HubSpot contact"
+      : review.hubspotMatch === "CREATED"
+        ? "New HubSpot contact created"
+        : review.hubspotMatch === "CREATED_AMBIGUOUS"
+          ? "New HubSpot contact, flagged as a possible duplicate - merge it in HubSpot"
+          : null;
+  if (!label) return null;
+  return (
+    <p className={`mt-2 text-xs ${review.hubspotMatch === "CREATED_AMBIGUOUS" ? "text-amber-700" : "text-gray-500"}`}>{label}</p>
+  );
 }

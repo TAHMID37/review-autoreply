@@ -1,11 +1,10 @@
 /**
- * This dashboard serves ONE brand - ACE Training and MultiSkills Training each
- * have their own copy of the app on their own domain. Everything the UI needs
- * to say about which brand it is comes from here.
+ * The product's own name, shown on the login screen and in the browser tab.
+ * Each business's own name comes from the API (the signed-in user's brand).
  *
- * Keep in step with the backend's src/config/app-brand.ts.
+ * Placeholder until the app name is decided - it must not include "HubSpot"
+ * or "Google" (Marketplace rule). Keep in step with hubspot-project/src/app/app-hsmeta.json.
  */
 export const APP_BRAND = {
-  /** Shown under the logo in the sidebar and in the browser tab title. */
-  displayName: "ACE Training",
+  displayName: "Review Auto-Reply",
 } as const;

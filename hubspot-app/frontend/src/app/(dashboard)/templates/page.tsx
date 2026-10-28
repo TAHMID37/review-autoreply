@@ -200,7 +200,7 @@ function TemplateEditor({
       } else {
         await apiFetch(`/response-templates`, {
           method: "POST",
-          body: JSON.stringify({ brandId, name, body }),
+          body: JSON.stringify({ name, body }),
         });
       }
       onSaved();

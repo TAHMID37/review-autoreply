@@ -12,8 +12,8 @@ const raleway = Raleway({
 });
 
 export const metadata: Metadata = {
-  title: `Review Auto-Reply - ${APP_BRAND.displayName}`,
-  description: `Google review inbox and auto-reply dashboard for ${APP_BRAND.displayName}.`,
+  title: APP_BRAND.displayName,
+  description: "Google review auto-replies, saved under your HubSpot contacts.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -21,9 +21,15 @@ export type RiskLevel = "LOW" | "HIGH";
 
 export interface AuthUser {
   id: string;
+  brandId: string;
   email: string;
   name: string;
   role: UserRole;
+}
+
+/** GET /auth/me: the user plus the business they are signed in to. */
+export interface CurrentUser extends AuthUser {
+  brand: { id: string; name: string; hubspotPortalId: string | null; hubspotDomain: string | null };
 }
 
 export interface LoginResponse {
@@ -31,14 +37,92 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export type NewContactPolicy = "ALL_REVIEWERS" | "COMMENTERS_ONLY";
+
+/** The signed-in business (one HubSpot account). */
 export interface Brand {
   id: string;
   name: string;
+  status: "ACTIVE" | "UNINSTALLED";
+  hubspotPortalId: string | null;
+  hubspotDomain: string | null;
   tone: string;
   language: string;
   forbiddenWords: string[];
+  autoReplyEnabled: boolean;
+  autoReplyConsentAt: string | null;
+  autoReplyStartAt: string | null;
+  alertEmails: string[];
+  slackConfigured: boolean;
+  crmSyncEnabled: boolean;
+  newContactPolicy: NewContactPolicy;
+  hubspotPropertiesReadyAt: string | null;
   createdAt: string;
-  updatedAt: string;
+}
+
+export interface SetupStatus {
+  steps: {
+    hubspotConnected: boolean;
+    googleConnected: boolean;
+    locationsSelected: boolean;
+    planChosen: boolean;
+    autoReplyEnabled: boolean;
+  };
+  locationsFound: number;
+  locationsSelected: number;
+  billingEnforced: boolean;
+  complete: boolean;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  address: string | null;
+  googleLocationId: string | null;
+  mapsUri: string | null;
+  syncEnabled: boolean;
+  _count?: { reviews: number };
+}
+
+export type SubscriptionStatus = "NONE" | "TRIALING" | "ACTIVE" | "PAST_DUE" | "UNPAID" | "CANCELED" | "INCOMPLETE";
+
+export interface BillingStatus {
+  enforced: boolean;
+  configured: boolean;
+  status: SubscriptionStatus;
+  quantity: number;
+  syncedLocations: number;
+  trialDays: number;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  pastDueSince: string | null;
+  graceDays: number;
+  serviceActive: boolean;
+}
+
+export type WidgetLayout = "CAROUSEL" | "GRID" | "LIST" | "BADGE";
+
+export interface WidgetTheme {
+  accent?: string;
+  background?: string;
+  text?: string;
+  radius?: number;
+}
+
+export interface Widget {
+  id: string;
+  publicId: string;
+  name: string;
+  layout: WidgetLayout;
+  locationIds: string[];
+  minRating: number;
+  maxReviews: number;
+  requireComment: boolean;
+  theme: WidgetTheme | null;
+  allowedDomains: string[];
+  enabled: boolean;
+  snippet: string;
 }
 
 export interface Reply {
@@ -66,6 +150,9 @@ export interface Review {
   reviewText: string;
   reviewedAt: string;
   status: string;
+  hubspotContactId: string | null;
+  hubspotMatch: "EXISTING" | "CREATED" | "CREATED_AMBIGUOUS" | "SKIPPED" | null;
+  hubspotSyncError: string | null;
   location: {
     id: string;
     name: string;
@@ -93,19 +180,12 @@ export interface WeeklyVolume {
 
 export type PlatformAccountStatus = "CONNECTED" | "DISCONNECTED" | "ERROR";
 
-export interface PlatformAccountCoverage {
-  brandId: string;
-  brandName: string;
-  locationCount: number;
-}
-
 export interface PlatformAccount {
   id: string;
   accountEmail: string;
   status: PlatformAccountStatus;
   connectedAt: string;
-  /** The brands this one login actually covers, by linked campus count. */
-  coverage: PlatformAccountCoverage[];
+  locationCount: number;
 }
 
 export interface SyncSummary {
@@ -115,6 +195,8 @@ export interface SyncSummary {
   updated: number;
   processed: number;
   failed: number;
+  posted: number;
+  savedToHubSpot: number;
 }
 
 export interface ResponseTemplate {

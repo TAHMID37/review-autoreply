@@ -1,0 +1,11 @@
+{
+  "uid": "google_reviews_contact_tab",
+  "type": "card",
+  "config": {
+    "name": "Google reviews",
+    "description": "This contact's Google reviews and our replies.",
+    "location": "crm.record.tab",
+    "entrypoint": "/app/cards/GoogleReviewsCard.jsx",
+    "objectTypes": ["contacts"]
+  }
+}

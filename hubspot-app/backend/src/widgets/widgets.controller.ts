@@ -44,7 +44,8 @@ export class PublicWidgetController {
   @Get("public/widgets/:publicId/feed")
   async feed(@Param("publicId") publicId: string, @Headers("origin") origin: string | undefined, @Res({ passthrough: true }) res: Response) {
     const feed = await this.widgets.feed(publicId, origin);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    // The dashboard's live preview must show edits straight away.
+    res.setHeader("Cache-Control", this.widgets.isPreviewOrigin(origin) ? "no-store" : "public, max-age=300");
     res.setHeader("Vary", "Origin");
     return feed;
   }

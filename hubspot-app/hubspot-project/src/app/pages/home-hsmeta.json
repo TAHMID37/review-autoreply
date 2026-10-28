@@ -1,0 +1,9 @@
+{
+  "uid": "review_auto_reply_home",
+  "type": "page",
+  "config": {
+    "name": "Review Auto-Reply",
+    "entrypoint": "/app/pages/Home.jsx",
+    "location": "home"
+  }
+}

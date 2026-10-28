@@ -3,36 +3,47 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BrandMark } from "@/components/layout/brand-mark";
-import { useAuth } from "@/lib/auth-context";
+import { APP_BRAND } from "@/lib/app-brand";
+import { isSafePath, useAuth } from "@/lib/auth-context";
 
+const DEV_LOGIN = process.env.NEXT_PUBLIC_DEV_LOGIN === "true";
+
+/**
+ * There are no passwords: everyone signs in with HubSpot. The first person
+ * from a HubSpot account to do so installs the app for that business.
+ */
 export default function LoginPage() {
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, signInWithHubSpot, devSignIn } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [next, setNext] = useState<string | undefined>(undefined);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("next");
+    if (isSafePath(requested)) setNext(requested);
+    if (params.get("error")) setError(params.get("error"));
+  }, []);
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace("/dashboard");
+      router.replace(next ?? "/dashboard");
     }
-  }, [isLoading, user, router]);
+  }, [isLoading, user, router, next]);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function handleHubSpot() {
+    setIsRedirecting(true);
+    signInWithHubSpot(next);
+  }
+
+  async function handleDev() {
     setError(null);
-    setIsSubmitting(true);
     try {
-      await login(email, password);
-      router.replace("/dashboard");
+      await devSignIn();
+      router.replace(next ?? "/dashboard");
     } catch (err) {
-      // Show the real reason. `instanceof` alone is unreliable across hot
-      // reloads (the class can be re-instantiated in a separate module), so
-      // fall back to any Error's message before the generic text.
-      setError(err instanceof Error && err.message ? err.message : "Something went wrong. Please try again.");
-    } finally {
-      setIsSubmitting(false);
+      setError(err instanceof Error && err.message ? err.message : "Dev sign-in failed");
     }
   }
 
@@ -43,48 +54,42 @@ export default function LoginPage() {
           <BrandMark tone="light" />
         </div>
         <h1 className="mb-1 text-xl font-bold text-ink">Sign in</h1>
-        <p className="mb-6 text-sm text-muted">Review Auto-Reply dashboard</p>
+        <p className="mb-6 text-sm text-muted">
+          {APP_BRAND.displayName} signs you in with your HubSpot account. New here? This also installs the app.
+        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-line px-3 py-2 text-sm text-ink focus:border-brand-pink focus:outline-none focus:ring-2 focus:ring-brand-pink/20"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-line px-3 py-2 text-sm text-ink focus:border-brand-pink focus:outline-none focus:ring-2 focus:ring-brand-pink/20"
-            />
-          </div>
+        <button
+          onClick={handleHubSpot}
+          disabled={isRedirecting}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#ff7a59] py-2.5 text-sm font-semibold text-white transition hover:bg-[#ff5c35] disabled:opacity-60"
+        >
+          <HubSpotSprocket />
+          {isRedirecting ? "Opening HubSpot…" : "Sign in with HubSpot"}
+        </button>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
+        <p className="mt-6 text-xs leading-relaxed text-muted">
+          You approve access on HubSpot&apos;s own screen, so we never see your password.
+        </p>
+
+        {DEV_LOGIN && (
           <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-lg bg-brand-pink py-2.5 text-sm font-semibold text-white transition hover:bg-brand-pinkDark disabled:opacity-50"
+            onClick={handleDev}
+            className="mt-6 w-full rounded-lg border border-dashed border-line py-2 text-xs font-medium text-muted hover:bg-surface"
           >
-            {isSubmitting ? "Signing in…" : "Sign in"}
+            Dev sign-in (demo business)
           </button>
-        </form>
+        )}
       </div>
     </div>
+  );
+}
+
+function HubSpotSprocket() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <path d="M17.5 8.2V5.9a1.8 1.8 0 1 0-1.6 0v2.3a5.1 5.1 0 0 0-2.4 1.1L7.2 4.4a2 2 0 1 0-1 1.2l6.2 4.8a5.1 5.1 0 0 0 .1 5.8l-1.9 1.9a1.6 1.6 0 1 0 1.1 1.1l1.9-1.9a5.1 5.1 0 1 0 3.9-9.1zm-.8 7.7a2.6 2.6 0 1 1 0-5.3 2.6 2.6 0 0 1 0 5.3z" />
+    </svg>
   );
 }

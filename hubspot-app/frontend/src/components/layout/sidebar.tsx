@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { APP_BRAND } from "@/lib/app-brand";
+import { useAuth } from "@/lib/auth-context";
 import { BrandMark } from "./brand-mark";
 
 const NAV_ITEMS: { href: string; label: string; icon: JSX.Element }[] = [
+  { href: "/setup", label: "Setup", icon: <IconCheck /> },
   { href: "/dashboard", label: "Dashboard", icon: <IconGrid /> },
   { href: "/reviews", label: "Reviews", icon: <IconChat /> },
   { href: "/alerts", label: "Alerts", icon: <IconBell /> },
   { href: "/templates", label: "Templates", icon: <IconDoc /> },
   { href: "/rules", label: "Auto-reply rules", icon: <IconList /> },
   { href: "/reports", label: "Reports", icon: <IconChart /> },
+  { href: "/widget", label: "Review widget", icon: <IconCode /> },
+  { href: "/billing", label: "Billing", icon: <IconCard /> },
   { href: "/settings", label: "Settings", icon: <IconCog /> },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <aside className="flex w-60 flex-shrink-0 flex-col bg-gradient-to-b from-brand-navy to-brand-navyDark px-4 py-6 text-white">
@@ -24,7 +28,7 @@ export function Sidebar() {
         <BrandMark tone="dark" />
       </div>
       <p className="mb-8 pl-1 text-[11px] font-medium uppercase tracking-wider text-white/40">
-        {APP_BRAND.displayName}
+        {user?.brand.name}
       </p>
 
       <nav className="space-y-1">
@@ -48,9 +52,9 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto rounded-lg bg-white/5 p-3 text-[11px] leading-relaxed text-white/50">
-        Google review workspace
+        Reviews sync every 15 minutes
         <br />
-        Auto-replies live · 1–2★ with a comment held for approval
+        1–2★ with a comment always wait for approval
       </div>
     </aside>
   );
@@ -81,6 +85,15 @@ function IconDoc() {
 }
 function IconList() {
   return base(<><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></>);
+}
+function IconCheck() {
+  return base(<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>);
+}
+function IconCode() {
+  return base(<><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>);
+}
+function IconCard() {
+  return base(<><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></>);
 }
 function IconCog() {
   return base(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>);

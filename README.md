@@ -18,8 +18,12 @@ repo holds two complete, self-contained copies of the app:
 review-autoreply/
 ├── ace/              ← ACE Training dashboard      (RTO 21716, 4 campuses)
 ├── mst/              ← MultiSkills Training dashboard (RTO 40846, 2 campuses)
+├── hubspot-app/      ← the same system as a multi-business HubSpot Marketplace app
 └── docs/             ← shared documentation
 ```
+
+`hubspot-app/` is the product version: any business installs it from HubSpot, and reviews are also
+saved under HubSpot contacts. See **[hubspot-app/README.md](hubspot-app/README.md)**.
 
 Each folder has its own `backend/` (NestJS API + Prisma), `frontend/` (Next.js dashboard), `.env`,
 dependencies and **its own database**. Nothing is shared at runtime: one brand's dashboard cannot

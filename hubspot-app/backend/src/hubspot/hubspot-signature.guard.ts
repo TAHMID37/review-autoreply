@@ -51,7 +51,7 @@ export class HubSpotSignatureGuard implements CanActivate {
       throw new UnauthorizedException("Invalid HubSpot signature");
     }
 
-    const portalId = String(req.query.portalId ?? "");
+    const portalId = firstParam(req.query.portalId) ?? "";
     const brand = portalId
       ? await this.prisma.brand.findUnique({ where: { hubspotPortalId: portalId }, select: { id: true, status: true } })
       : null;
@@ -62,11 +62,18 @@ export class HubSpotSignatureGuard implements CanActivate {
     req.hubspot = {
       brandId: brand.id,
       portalId,
-      hubspotUserId: req.query.userId ? String(req.query.userId) : null,
-      userEmail: req.query.userEmail ? String(req.query.userEmail) : null,
+      hubspotUserId: firstParam(req.query.userId),
+      userEmail: firstParam(req.query.userEmail),
     };
     return true;
   }
+}
+
+/** Our cards add portalId/userId/userEmail themselves, and HubSpot may append
+ *  the same names too - Express then gives an array. Both values are signed. */
+function firstParam(value: unknown): string | null {
+  const v = Array.isArray(value) ? value[0] : value;
+  return typeof v === "string" && v ? v : null;
 }
 
 function header(req: Request, name: string): string | undefined {

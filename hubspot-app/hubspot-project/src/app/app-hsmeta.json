@@ -1,0 +1,35 @@
+{
+  "uid": "review_auto_reply_app",
+  "type": "app",
+  "config": {
+    "name": "Review Auto-Reply",
+    "description": "Pulls your Google reviews, replies automatically with your own templates, saves every review on the reviewer's HubSpot contact, and shows your reviews on your website.",
+    "distribution": "marketplace",
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": [
+        "https://api.REPLACE-WITH-OUR-DOMAIN/hubspot/oauth/callback",
+        "http://localhost:4020/hubspot/oauth/callback"
+      ],
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.schemas.contacts.read",
+        "crm.schemas.contacts.write"
+      ],
+      "optionalScopes": [],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": ["https://api.REPLACE-WITH-OUR-DOMAIN"],
+      "iframe": [],
+      "img": ["https://lh3.googleusercontent.com"]
+    },
+    "support": {
+      "supportEmail": "support@REPLACE-WITH-OUR-DOMAIN",
+      "documentationUrl": "https://REPLACE-WITH-OUR-DOMAIN/docs/setup",
+      "supportUrl": "https://REPLACE-WITH-OUR-DOMAIN/support"
+    }
+  }
+}
