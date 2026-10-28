@@ -1,0 +1,29 @@
+{
+  "name": "review-autoreply-hubspot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Review Auto-Reply as a multi-business HubSpot Marketplace app",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "test": "npm run test -w backend",
+    "db:generate": "npm run db:generate -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "db:studio": "npm run db:studio -w backend",
+    "db:deploy": "npm run db:deploy -w backend",
+    "hs:validate": "cd hubspot-project && npx --yes @hubspot/cli@8.18.0 project validate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

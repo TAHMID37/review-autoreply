@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-surface text-ink antialiased;
+  font-feature-settings: "kern";
+}
+
+/* Brand focus ring default for form controls */
+::selection {
+  background: rgba(221, 17, 87, 0.15);
+}
