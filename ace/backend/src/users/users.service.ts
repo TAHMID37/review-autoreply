@@ -25,4 +25,23 @@ export class UsersService {
   findForAuthByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email } });
   }
+
+  /** For AuthService only — includes passwordHash, to re-check the current
+   *  password before letting someone change their own login details. */
+  findForAuthById(id: string) {
+    return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  /** True when the email is already taken by a *different* user. */
+  async isEmailTakenByAnother(email: string, userId: string): Promise<boolean> {
+    const owner = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+    return owner !== null && owner.id !== userId;
+  }
+
+  updateAccount(
+    id: string,
+    data: { name?: string; email?: string; passwordHash?: string },
+  ): Promise<AuthUserDto> {
+    return this.prisma.user.update({ where: { id }, data, select: SAFE_USER_SELECT });
+  }
 }

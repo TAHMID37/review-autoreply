@@ -79,6 +79,7 @@ export interface ReviewStats {
   averageRating: number;
   reviewsThisMonth: number;
   responseRate: number;
+  responseScope: { posted: number; total: number; sinceCutoff: boolean };
   autoRepliedCount: number;
   needsApprovalCount: number;
   totalReviews: number;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ResponseRateMeter } from "@/components/reports/response-rate-meter";
 import { WeeklyVolumeChart } from "@/components/reports/weekly-volume-chart";
 import { StatTile } from "@/components/reviews/stat-tile";
+import { responseScopeLabel } from "@/lib/response-scope";
 import { apiFetch } from "@/lib/api-client";
 import type { Brand, ReviewStats, WeeklyVolume } from "@/types/api";
 
@@ -36,7 +37,12 @@ export default function ReportsPage() {
     void load();
   }, [load]);
 
-  const repliedCount = stats ? stats.totalReviews - stats.needsApprovalCount : 0;
+  // Both figures come from the same in-scope set the response rate is measured
+  // against, so the meter's two numbers always add up to its denominator. The
+  // old "total minus awaiting approval" counted every untouched backlog draft
+  // as replied, which it is not.
+  const repliedCount = stats?.responseScope.posted ?? 0;
+  const awaitingCount = stats ? stats.responseScope.total - stats.responseScope.posted : 0;
 
   return (
     <div className="space-y-4">
@@ -75,7 +81,12 @@ export default function ReportsPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile value={String(stats.reviewsThisMonth)} label="Reviews this month" />
           <StatTile value={`${stats.averageRating} ★`} label="Average rating" />
-          <StatTile value={`${stats.responseRate}%`} label="Response rate" highlight />
+          <StatTile
+            value={`${stats.responseRate}%`}
+            label="Response rate"
+            sub={responseScopeLabel(stats)}
+            highlight
+          />
           <StatTile value={String(stats.needsApprovalCount)} label="Awaiting approval" />
         </div>
       )}
@@ -89,7 +100,8 @@ export default function ReportsPage() {
             <ResponseRateMeter
               responseRate={stats.responseRate}
               replied={repliedCount}
-              pending={stats.needsApprovalCount}
+              pending={awaitingCount}
+              caption={stats.responseScope.sinceCutoff ? "Of reviews received since go-live" : "Of all reviews received"}
             />
           )}
         </div>

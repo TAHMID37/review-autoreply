@@ -36,6 +36,14 @@ export interface ListReviewsResult {
   reviews: GoogleReview[];
   /** Every review id Google currently serves for the location (answered too). */
   allExternalIds: string[];
+  /** Reviews that already carry an owner reply on Google, with that reply. */
+  answered: GoogleOwnerReply[];
+}
+
+export interface GoogleOwnerReply {
+  externalReviewId: string;
+  comment: string;
+  repliedAt: Date;
 }
 
 const STAR_WORD_TO_NUMBER: Record<string, number> = {
@@ -87,9 +95,21 @@ export class GoogleReviewsClient {
       this.logger.log(`${locationName}: skipped ${skipped} review(s) already replied to on Google.`);
     }
 
+    // Answered reviews are still reported (not ingested), so sync can close out
+    // any we already stored that someone has since replied to on Google directly.
+    const answered = raw
+      .filter(hasOwnerReply)
+      .map((r) => ({
+        externalReviewId: r.reviewId || r.name || "",
+        comment: (r.reviewReply?.comment ?? "").trim(),
+        repliedAt: r.reviewReply?.updateTime ? new Date(r.reviewReply.updateTime) : new Date(),
+      }))
+      .filter((a) => a.externalReviewId);
+
     return {
       reviews: unanswered.map(mapReview).filter((r): r is GoogleReview => r !== null),
       allExternalIds,
+      answered,
     };
   }
 

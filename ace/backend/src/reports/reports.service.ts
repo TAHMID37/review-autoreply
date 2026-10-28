@@ -1,12 +1,17 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { Prisma, ReplyStatus } from "@prisma/client";
+import { Env } from "../config/env.schema";
+import { APP_ENV } from "../config/env.token";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { GOOGLE_OWNER_PROVIDER } from "../reviews/reviews.service";
 
 export interface ReviewStats {
   averageRating: number;
   reviewsThisMonth: number;
-  /** Percentage of reviews that have a reply actually posted. */
+  /** Percentage of in-scope reviews that have a reply actually posted. */
   responseRate: number;
+  /** The numerator/denominator behind responseRate, so the UI can show its working. */
+  responseScope: { posted: number; total: number; sinceCutoff: boolean };
   autoRepliedCount: number;
   needsApprovalCount: number;
   totalReviews: number;
@@ -20,21 +25,37 @@ export interface WeeklyVolume {
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(APP_ENV) private readonly env: Env,
+  ) {}
 
   /** The four stat tiles at the top of the dashboard. */
   async getStats(brandId?: string): Promise<ReviewStats> {
     const where: Prisma.ReviewWhereInput = brandId ? { location: { brandId } } : {};
     const monthStart = startOfCurrentMonth();
 
-    const [aggregate, totalReviews, reviewsThisMonth, postedCount, autoRepliedCount, needsApprovalCount] =
+    // Response rate is measured only against the reviews this system is actually
+    // responsible for: those on or after the go-live cutoff. The older backlog is
+    // deliberately never auto-replied (see AUTO_POST_MIN_REVIEW_DATE), so counting
+    // it in the denominator would pin the rate near zero forever and read as a
+    // failure rather than the policy it is. With no cutoff set, scope is everything.
+    const cutoff = this.env.AUTO_POST_MIN_REVIEW_DATE;
+    const inScope: Prisma.ReviewWhereInput = cutoff ? { ...where, reviewedAt: { gte: cutoff } } : where;
+
+    const [aggregate, totalReviews, reviewsThisMonth, scopeTotal, scopePosted, autoRepliedCount, needsApprovalCount] =
       await Promise.all([
         this.prisma.review.aggregate({ where, _avg: { rating: true } }),
         this.prisma.review.count({ where }),
         this.prisma.review.count({ where: { ...where, reviewedAt: { gte: monthStart } } }),
-        this.prisma.review.count({ where: { ...where, reply: { status: ReplyStatus.POSTED } } }),
+        this.prisma.review.count({ where: inScope }),
+        this.prisma.review.count({ where: { ...inScope, reply: { status: ReplyStatus.POSTED } } }),
         this.prisma.review.count({
-          where: { ...where, reply: { status: ReplyStatus.POSTED, approvedByUserId: null } },
+          // Replies posted on Google by hand are responses, but not auto-replies.
+          where: {
+            ...where,
+            reply: { status: ReplyStatus.POSTED, approvedByUserId: null, aiProvider: { not: GOOGLE_OWNER_PROVIDER } },
+          },
         }),
         this.prisma.review.count({ where: { ...where, reply: { status: ReplyStatus.PENDING_APPROVAL } } }),
       ]);
@@ -42,7 +63,8 @@ export class ReportsService {
     return {
       averageRating: round(aggregate._avg.rating ?? 0, 1),
       reviewsThisMonth,
-      responseRate: totalReviews === 0 ? 0 : Math.round((postedCount / totalReviews) * 100),
+      responseRate: scopeTotal === 0 ? 0 : Math.round((scopePosted / scopeTotal) * 100),
+      responseScope: { posted: scopePosted, total: scopeTotal, sinceCutoff: Boolean(cutoff) },
       autoRepliedCount,
       needsApprovalCount,
       totalReviews,

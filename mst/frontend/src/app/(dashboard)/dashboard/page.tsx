@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StatTile } from "@/components/reviews/stat-tile";
+import { responseScopeLabel } from "@/lib/response-scope";
 import { APP_BRAND } from "@/lib/app-brand";
 import { apiFetch } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
@@ -41,7 +42,12 @@ export default function DashboardHomePage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile value={`${stats.averageRating} ★`} label="Average rating" />
           <StatTile value={String(stats.reviewsThisMonth)} label="Reviews this month" />
-          <StatTile value={`${stats.responseRate}%`} label="Response rate" highlight />
+          <StatTile
+            value={`${stats.responseRate}%`}
+            label="Response rate"
+            sub={responseScopeLabel(stats)}
+            highlight
+          />
           <StatTile value={String(stats.needsApprovalCount)} label="Awaiting approval" />
         </div>
       )}

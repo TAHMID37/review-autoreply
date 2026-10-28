@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ReviewCard } from "@/components/reviews/review-card";
 import { StatTile } from "@/components/reviews/stat-tile";
+import { responseScopeLabel } from "@/lib/response-scope";
 import { Pagination } from "@/components/ui/pagination";
 import { apiFetch } from "@/lib/api-client";
 import { DATE_RANGE_LABEL, DATE_RANGES, withinRange, type DateRange } from "@/lib/date-range";
@@ -152,7 +153,12 @@ export default function ReviewsPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile value={`${stats.averageRating} ★`} label="Average rating" />
           <StatTile value={String(stats.reviewsThisMonth)} label="Reviews this month" />
-          <StatTile value={`${stats.responseRate}%`} label="Response rate" highlight />
+          <StatTile
+            value={`${stats.responseRate}%`}
+            label="Response rate"
+            sub={responseScopeLabel(stats)}
+            highlight
+          />
           <StatTile value={String(stats.autoRepliedCount)} label="Auto-replied" />
         </div>
       )}

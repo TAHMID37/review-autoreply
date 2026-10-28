@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Patch, Post, UseGuards } from "@nestjs/common";
 import { AuthUserDto, LoginResponseDto } from "./dto/auth-user.dto";
 import { UsersService } from "../users/users.service";
 import { AuthService } from "./auth.service";
 import { CurrentUser } from "./decorators/current-user.decorator";
 import { LoginDto } from "./dto/login.dto";
+import { UpdateAccountDto } from "./dto/update-account.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 
 @Controller("auth")
@@ -30,5 +31,16 @@ export class AuthController {
       throw new NotFoundException("User no longer exists");
     }
     return user;
+  }
+
+  /** Lets a signed-in user change their own login details from Settings.
+   *  Responds like a login does, so the dashboard can swap in the new token. */
+  @Patch("account")
+  @UseGuards(JwtAuthGuard)
+  async updateAccount(
+    @CurrentUser() currentUser: AuthUserDto,
+    @Body() dto: UpdateAccountDto,
+  ): Promise<LoginResponseDto> {
+    return this.authService.updateAccount(currentUser.id, dto);
   }
 }

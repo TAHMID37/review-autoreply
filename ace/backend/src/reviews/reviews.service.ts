@@ -1,12 +1,17 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { Prisma, ReplyStatus, ReviewStatus } from "@prisma/client";
+import { Platform, Prisma, ReplyStatus, ReviewStatus } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
+import type { GoogleOwnerReply } from "../platform-accounts/google-reviews.client";
 import { IngestReviewDto } from "./dto/ingest-review.dto";
 import { ReviewFiltersDto } from "./dto/review-filters.dto";
 
 /** What `upsertFromPlatform` did, so the caller knows whether to run the
  *  AI pipeline (new/edited reviews only) or skip (already seen, unchanged). */
 export type IngestOutcome = "created" | "updated" | "unchanged";
+
+/** `Reply.aiProvider` marker for a reply someone posted on Google directly,
+ *  outside this dashboard. Such replies count as responded, not auto-replied. */
+export const GOOGLE_OWNER_PROVIDER = "google-owner";
 
 const REVIEW_WITH_DETAIL = {
   include: {
@@ -141,6 +146,50 @@ export class ReviewsService {
       where: { id },
       data: { status: ReviewStatus.PROCESSED },
     });
+  }
+
+  /**
+   * Closes out stored reviews that have since been replied to on Google
+   * directly (e.g. a low-rated review answered by hand in the Business
+   * Profile). Their reply is recorded as POSTED with Google's text, so they
+   * leave Alerts and can never be posted a second time. Replies we posted
+   * ourselves are already POSTED and left alone. Returns how many changed.
+   */
+  async markRepliedOnGoogle(locationId: string, answered: GoogleOwnerReply[]): Promise<number> {
+    if (answered.length === 0) return 0;
+
+    const stale = await this.prisma.review.findMany({
+      where: {
+        locationId,
+        platform: Platform.GOOGLE,
+        externalReviewId: { in: answered.map((a) => a.externalReviewId) },
+        OR: [{ reply: null }, { reply: { status: { not: ReplyStatus.POSTED } } }],
+      },
+      select: { id: true, externalReviewId: true },
+    });
+
+    for (const review of stale) {
+      const owner = answered.find((a) => a.externalReviewId === review.externalReviewId)!;
+      const posted = {
+        finalReply: owner.comment,
+        status: ReplyStatus.POSTED,
+        postedAt: owner.repliedAt,
+        aiProvider: GOOGLE_OWNER_PROVIDER,
+        aiModel: "manual",
+        autoPostAt: null,
+        failureReason: null,
+      };
+      await this.prisma.$transaction([
+        this.prisma.reply.upsert({
+          where: { reviewId: review.id },
+          create: { reviewId: review.id, aiDraft: owner.comment, ...posted },
+          update: posted,
+        }),
+        this.prisma.review.update({ where: { id: review.id }, data: { status: ReviewStatus.PROCESSED } }),
+      ]);
+      this.logger.log(`Review ${review.id} was replied to on Google directly - marked as replied`);
+    }
+    return stale.length;
   }
 
   /**

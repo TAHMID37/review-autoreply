@@ -8,6 +8,9 @@ interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Adopts a session the API just handed back — used after changing your own
+   *  login details, so the dashboard stays signed in with the new token. */
+  applySession: (session: LoginResponse) => void;
   logout: () => void;
 }
 
@@ -28,21 +31,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const result = await apiFetch<LoginResponse>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    storeToken(result.accessToken);
-    setUser(result.user);
+  const applySession = useCallback((session: LoginResponse) => {
+    storeToken(session.accessToken);
+    setUser(session.user);
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const result = await apiFetch<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      applySession(result);
+    },
+    [applySession],
+  );
 
   const logout = useCallback(() => {
     clearStoredToken();
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, isLoading, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, isLoading, login, applySession, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

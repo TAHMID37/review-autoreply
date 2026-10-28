@@ -50,7 +50,7 @@ export function Sidebar() {
       <div className="mt-auto rounded-lg bg-white/5 p-3 text-[11px] leading-relaxed text-white/50">
         Google review workspace
         <br />
-        Read-only · nothing posted to Google
+        Auto-replies live · 1–2★ with a comment held for approval
       </div>
     </aside>
   );

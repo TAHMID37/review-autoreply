@@ -20,17 +20,20 @@ export function ResponseRateMeter({
   responseRate,
   replied,
   pending,
+  caption = "Of all reviews received",
 }: {
   responseRate: number;
   replied: number;
   pending: number;
+  /** Says which reviews the rate was measured against. */
+  caption?: string;
 }) {
   const filled = Math.max(0, Math.min(100, responseRate));
 
   return (
     <figure className="m-0">
       <figcaption className="mb-1 text-sm font-medium text-gray-900">Response rate</figcaption>
-      <p className="mb-3 text-xs text-gray-500">Of all reviews received</p>
+      <p className="mb-3 text-xs text-gray-500">{caption}</p>
 
       <div className="flex items-center gap-6">
         <svg

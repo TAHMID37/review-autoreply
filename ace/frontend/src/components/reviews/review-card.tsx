@@ -14,6 +14,8 @@ interface ReviewCardProps {
 export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
   const { reply } = review;
   const needsApproval = reply?.status === "PENDING_APPROVAL";
+  // Answered by hand on Google, outside this dashboard (see GOOGLE_OWNER_PROVIDER).
+  const repliedOnGoogle = reply?.aiProvider === "google-owner";
 
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(reply?.finalReply ?? reply?.aiDraft ?? "");
@@ -45,7 +47,7 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
               <span className="text-gray-400">({formatRelativeTime(review.reviewedAt)})</span>
             </span>
             <span className="ml-auto">
-              <StatusBadge status={reply?.status} />
+              <StatusBadge status={repliedOnGoogle ? "REPLIED_ON_GOOGLE" : reply?.status} />
             </span>
           </div>
 
@@ -64,8 +66,8 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
               }`}
             >
               <div className="flex gap-2">
-                <span className="mt-0.5 rounded bg-brand-navy px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  AI
+                <span className="mt-0.5 h-fit rounded bg-brand-navy px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                  {repliedOnGoogle ? "Owner" : "AI"}
                 </span>
                 {isEditing ? (
                   <textarea
@@ -134,6 +136,7 @@ function Avatar({ name }: { name: string }) {
 
 const BADGE_STYLES: Record<string, { label: string; className: string }> = {
   POSTED: { label: "Auto-replied", className: "bg-emerald-50 text-emerald-700" },
+  REPLIED_ON_GOOGLE: { label: "Replied on Google", className: "bg-emerald-50 text-emerald-700" },
   APPROVED: { label: "Approved", className: "bg-emerald-50 text-emerald-700" },
   PENDING_APPROVAL: { label: "Needs approval", className: "bg-brand-pink/10 text-brand-pink" },
   GENERATED: { label: "Draft ready", className: "bg-gray-100 text-gray-600" },

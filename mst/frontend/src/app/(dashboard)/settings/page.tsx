@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Brand, PlatformAccount, SyncSummary } from "@/types/api";
+import type { Brand, LoginResponse, PlatformAccount, SyncSummary } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
+import { APP_BRAND } from "@/lib/app-brand";
+import { useAuth } from "@/lib/auth-context";
 
 export default function SettingsPage() {
   const [brands, setBrands] = useState<Brand[] | null>(null);
@@ -24,6 +26,8 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-8">
+      <AccountSection />
+
       <GoogleConnectionSection brands={brands} />
 
       <div>
@@ -41,6 +45,166 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+// ── Your own login ────────────────────────────────────────────────────────────
+
+/**
+ * Lets whoever is signed in change their own name, email and password without
+ * anyone touching the server. Each dashboard has its own separate login, so a
+ * change here only affects this brand's site.
+ */
+function AccountSection() {
+  const { user, applySession } = useAuth();
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  // Fill the form once the signed-in user has loaded.
+  useEffect(() => {
+    if (!user) return;
+    setName(user.name);
+    setEmail(user.email);
+  }, [user]);
+
+  const detailsChanged = user !== null && (name.trim() !== user.name || email.trim() !== user.email);
+  const hasChanges = detailsChanged || newPassword.length > 0;
+
+  async function handleSave() {
+    setError(null);
+    setSaved(null);
+
+    if (newPassword && newPassword !== confirmPassword) {
+      setError("The two new passwords do not match.");
+      return;
+    }
+    if (newPassword && newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const session = await apiFetch<LoginResponse>("/auth/account", {
+        method: "PATCH",
+        body: JSON.stringify({
+          currentPassword,
+          name: name.trim(),
+          email: email.trim(),
+          ...(newPassword ? { newPassword } : {}),
+        }),
+      });
+      applySession(session);
+      setNewPassword("");
+      setConfirmPassword("");
+      setCurrentPassword("");
+      setSaved(
+        newPassword
+          ? "Saved. Use your new password the next time you sign in."
+          : "Saved.",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your changes");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <h1 className="text-lg font-semibold text-ink">Your login</h1>
+      <p className="mt-1 text-sm text-muted">
+        The email and password you use to sign in here. This is the {APP_BRAND.displayName} dashboard
+        only &mdash; the other brand&apos;s dashboard has its own separate login.
+      </p>
+
+      <div className="mt-3 rounded-lg border border-line bg-white p-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Your name">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+              className={FIELD_CLASS}
+            />
+          </Field>
+          <Field label="Email address" hint="This is also your username.">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              className={FIELD_CLASS}
+            />
+          </Field>
+          <Field label="New password" hint="Leave blank to keep your current one.">
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              className={FIELD_CLASS}
+            />
+          </Field>
+          <Field label="Confirm new password">
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              disabled={newPassword.length === 0}
+              className={`${FIELD_CLASS} disabled:bg-gray-50`}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4 border-t border-line pt-4">
+          <Field label="Current password" hint="Required to save any change above.">
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              className={`${FIELD_CLASS} sm:w-1/2`}
+            />
+          </Field>
+        </div>
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {saved && <p className="mt-3 text-sm text-green-700">{saved}</p>}
+
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !hasChanges || currentPassword.length === 0}
+          className="mt-4 rounded-md bg-brand-pink px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {isSaving ? "Saving\u2026" : "Save changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const FIELD_CLASS =
+  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-ink focus:border-brand-pink focus:outline-none focus:ring-1 focus:ring-brand-pink";
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-ink">{label}</span>
+      {hint && <span className="ml-1 text-xs text-muted">{hint}</span>}
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
+
 
 // ── Google Business Profile connection ────────────────────────────────────────
 

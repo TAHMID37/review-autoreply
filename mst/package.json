@@ -17,6 +17,7 @@
     "db:migrate": "npm run db:migrate -w backend",
     "db:seed": "npm run db:seed -w backend",
     "db:seed-reviews": "npm run db:seed-reviews -w backend",
+    "db:seed-config": "npm run db:seed-config -w backend",
     "db:studio": "npm run db:studio -w backend"
   },
   "devDependencies": {
