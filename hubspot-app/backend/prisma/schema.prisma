@@ -1,0 +1,510 @@
+// Prisma schema — the single source of truth for the whole data model.
+//
+// This is the MULTI-BUSINESS (HubSpot Marketplace) edition. Unlike ace/ and
+// mst/, which each serve one brand from their own database, this database holds
+// every business that has installed the app. Each business is one `Brand` row,
+// tied 1:1 to the HubSpot account (portal) that installed it, and every other
+// table hangs off a Brand — so every query is scoped by brandId.
+//
+// The model is kept called `Brand` (not "Tenant") on purpose: the review
+// pipeline is shared with ace/ and mst/, and keeping the same names means a fix
+// there can be ported here line for line.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+/// Whether the business still has the app installed in HubSpot.
+enum BrandStatus {
+  ACTIVE
+  UNINSTALLED
+}
+
+/// Only GOOGLE is wired up in v1. The field exists on every relevant model
+/// so Facebook/Yelp/Trustpilot can be added later without a schema change.
+enum Platform {
+  GOOGLE
+}
+
+enum PlatformAccountStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum HubSpotInstallStatus {
+  INSTALLED
+  /// Uninstalled in HubSpot, or the refresh token was revoked.
+  UNINSTALLED
+}
+
+/// Lifecycle of a fetched review's ingestion, independent of its reply.
+enum ReviewStatus {
+  NEW
+  PROCESSING
+  PROCESSED
+}
+
+enum RiskLevel {
+  LOW
+  HIGH
+}
+
+/// Lifecycle of the reply attached to a review.
+enum ReplyStatus {
+  GENERATED
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+  FAILED
+  REJECTED
+}
+
+enum NotificationChannel {
+  SLACK
+  EMAIL
+}
+
+enum JobStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+/// Whether an auto-reply rule matches reviews that have written text, that have
+/// no text, or either.
+enum CommentCondition {
+  PRESENT
+  ABSENT
+  ANY
+}
+
+/// Which reviewers get a HubSpot contact created when no existing contact matches.
+enum NewContactPolicy {
+  /// Every reviewer (recommended in the plan).
+  ALL_REVIEWERS
+  /// Only reviewers who wrote a comment; star-only reviewers are not added.
+  COMMENTERS_ONLY
+}
+
+/// How a review was tied to a HubSpot contact.
+enum HubSpotMatch {
+  /// Exactly one existing contact matched the reviewer's name.
+  EXISTING
+  /// No contact matched, so one was created.
+  CREATED
+  /// More than one contact could be the reviewer, so a new one was created and
+  /// flagged as a possible duplicate for the business to merge.
+  CREATED_AMBIGUOUS
+  /// Not saved to HubSpot (anonymous reviewer, or excluded by NewContactPolicy).
+  SKIPPED
+}
+
+enum SubscriptionStatus {
+  NONE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  INCOMPLETE
+}
+
+enum WidgetLayout {
+  CAROUSEL
+  GRID
+  LIST
+  BADGE
+}
+
+// ── Models ───────────────────────────────────────────────────────────────
+
+/// One business that installed the app = one HubSpot account (portal).
+/// Holds that business's reply tone, auto-reply consent and alert settings.
+model Brand {
+  id              String      @id @default(cuid())
+  name            String
+  status          BrandStatus @default(ACTIVE)
+  /// HubSpot "hub id". Null only for the local dev seed.
+  hubspotPortalId String?     @unique
+  hubspotDomain   String?
+  tone            String      @default("Professional, friendly, and concise.")
+  language        String      @default("en")
+  replyRules      Json?
+  forbiddenWords  String[]    @default([])
+
+  /// Auto-replies are OFF until a person switches them on and ticks the consent
+  /// box (Google requires the business's consent). Only reviews left on/after
+  /// `autoReplyStartAt` are ever auto-replied, so the backlog is never touched.
+  autoReplyEnabled         Boolean   @default(false)
+  autoReplyConsentAt       DateTime?
+  autoReplyConsentByUserId String?
+  autoReplyStartAt         DateTime?
+
+  /// Per-business approval alerts. Blank = channel off for this business.
+  alertEmails     String[] @default([])
+  slackWebhookUrl String?
+
+  /// Saving reviews under HubSpot contacts.
+  crmSyncEnabled          Boolean          @default(true)
+  newContactPolicy        NewContactPolicy @default(ALL_REVIEWERS)
+  /// Set once our contact properties exist in this portal.
+  hubspotPropertiesReadyAt DateTime?
+
+  uninstalledAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users               User[]
+  locations           Location[]
+  platformAccounts    PlatformAccount[]
+  responseTemplates   ResponseTemplate[]
+  autoReplyRules      AutoReplyRule[]
+  hubspotInstallation HubSpotInstallation?
+  subscription        Subscription?
+  widgets             Widget[]
+
+  @@map("brands")
+}
+
+/// A HubSpot user who has opened the app for a business. There are no
+/// passwords: people sign in with HubSpot. The same person in two HubSpot
+/// accounts is two rows, one per business.
+model User {
+  id            String   @id @default(cuid())
+  brandId       String
+  hubspotUserId String?
+  email         String
+  name          String
+  role          UserRole @default(STAFF)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  brand           Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  approvedReplies Reply[] @relation("ApprovedByUser")
+
+  @@unique([brandId, hubspotUserId])
+  @@unique([brandId, email])
+  @@map("users")
+}
+
+/// The OAuth connection to the business's HubSpot account. Tokens are stored
+/// encrypted (TokenVaultService), the same way as Google tokens.
+model HubSpotInstallation {
+  id                    String               @id @default(cuid())
+  brandId               String               @unique
+  portalId              String               @unique
+  accessToken           String
+  refreshToken          String
+  tokenExpiresAt        DateTime
+  scopes                String[]             @default([])
+  installedByHubspotUserId String?
+  installedByEmail      String?
+  status                HubSpotInstallStatus @default(INSTALLED)
+  installedAt           DateTime             @default(now())
+  uninstalledAt         DateTime?
+  updatedAt             DateTime             @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("hubspot_installations")
+}
+
+/// One-time code handed to the browser after HubSpot sign-in and swapped for a
+/// session token, so the session token itself never appears in a URL.
+model LoginCode {
+  code      String   @id
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("login_codes")
+}
+
+/// A named, reusable reply wording. Auto-reply rules reference these by id;
+/// the drafting engine fills in ${Reviewer first name}, ${Business name} etc.
+model ResponseTemplate {
+  id        String   @id @default(cuid())
+  brandId   String
+  name      String
+  body      String
+  enabled   Boolean  @default(true)
+  createdBy String   @default("System")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, name])
+  @@index([brandId])
+  @@map("response_templates")
+}
+
+/// An auto-reply rule: for a business's reviews matching a rating set + comment
+/// condition, reply by picking one of `templateIds`, posted after `delayHours`.
+/// Higher `rank` wins when more than one rule matches.
+model AutoReplyRule {
+  id          String           @id @default(cuid())
+  brandId     String
+  name        String
+  platform    Platform         @default(GOOGLE)
+  enabled     Boolean          @default(true)
+  rank        Int              @default(0)
+  ratings     Int[]            @default([])
+  comment     CommentCondition @default(ANY)
+  delayHours  Int              @default(24)
+  templateIds String[]         @default([])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, name])
+  @@index([brandId])
+  @@map("auto_reply_rules")
+}
+
+/// A business location (a Google Business Profile listing).
+model Location {
+  id               String   @id @default(cuid())
+  brandId          String
+  name             String
+  address          String?
+  timezone         String   @default("Australia/Melbourne")
+  /// Google's numeric location id. Unique per business, so two businesses can
+  /// both manage the same listing (e.g. an agency and its client) without clashing.
+  googleLocationId String?
+  /// Public Google Maps link for the listing - the "view on Google" link shown
+  /// on HubSpot notes and in the website widget.
+  mapsUri          String?
+  /// Only ticked locations are synced and billed. New locations start unticked.
+  syncEnabled      Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  brand             Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  platformLocations PlatformLocation[]
+  reviews           Review[]
+
+  @@unique([brandId, googleLocationId])
+  @@index([brandId])
+  @@map("locations")
+}
+
+/// One connected Google Business Profile login for a business.
+model PlatformAccount {
+  id             String                @id @default(cuid())
+  brandId        String
+  platform       Platform              @default(GOOGLE)
+  accountEmail   String
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  status         PlatformAccountStatus @default(CONNECTED)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  brand             Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  platformLocations PlatformLocation[]
+
+  @@unique([brandId, platform, accountEmail])
+  @@index([brandId])
+  @@map("platform_accounts")
+}
+
+/// Links one connected PlatformAccount to the external location it grants
+/// access to (a single Google login can cover several locations).
+model PlatformLocation {
+  id                 String   @id @default(cuid())
+  platformAccountId  String
+  locationId         String
+  externalLocationId String
+  createdAt          DateTime @default(now())
+
+  platformAccount PlatformAccount @relation(fields: [platformAccountId], references: [id], onDelete: Cascade)
+  location        Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([platformAccountId, externalLocationId])
+  @@index([locationId])
+  @@map("platform_locations")
+}
+
+model Review {
+  id               String       @id @default(cuid())
+  locationId       String
+  platform         Platform     @default(GOOGLE)
+  externalReviewId String
+  reviewerName     String
+  reviewerPhotoUrl String?
+  rating           Int
+  reviewText       String       @default("")
+  reviewedAt       DateTime
+  fetchedAt        DateTime     @default(now())
+  status           ReviewStatus @default(NEW)
+  /// Set when the review is no longer returned by the platform.
+  removedAt        DateTime?
+
+  // ── Saved under a HubSpot contact ──
+  hubspotContactId String?
+  hubspotNoteId    String?
+  hubspotMatch     HubSpotMatch?
+  /// True whenever the review or its reply changed since it was last written
+  /// to HubSpot. The CRM sync picks these up.
+  hubspotDirty     Boolean      @default(true)
+  hubspotSyncedAt  DateTime?
+  hubspotSyncError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  location      Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  analysis      ReviewAnalysis?
+  reply         Reply?
+  notifications NotificationLog[]
+
+  @@unique([platform, locationId, externalReviewId])
+  @@index([locationId])
+  @@index([hubspotDirty])
+  @@index([hubspotContactId])
+  @@map("reviews")
+}
+
+/// Sentiment/risk assessment for a review.
+model ReviewAnalysis {
+  id        String    @id @default(cuid())
+  reviewId  String    @unique
+  sentiment String
+  riskLevel RiskLevel @default(LOW)
+  riskFlags String[]  @default([])
+  createdAt DateTime  @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_analyses")
+}
+
+model Reply {
+  id               String      @id @default(cuid())
+  reviewId         String      @unique
+  aiDraft          String
+  finalReply       String?
+  status           ReplyStatus @default(GENERATED)
+  aiProvider       String
+  aiModel          String
+  approvedByUserId String?
+  postedAt         DateTime?
+  platformReplyId  String?
+  failureReason    String?
+  /// When an auto-postable draft becomes eligible to post (draft time + the
+  /// rule's delay). Null for replies held for manual approval.
+  autoPostAt       DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  review     Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("ApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  @@map("replies")
+}
+
+/// Stripe subscription for a business: one monthly price per synced location.
+model Subscription {
+  id                   String             @id @default(cuid())
+  brandId              String             @unique
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(NONE)
+  /// Billed quantity = number of synced locations.
+  quantity             Int                @default(0)
+  trialEndsAt          DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  /// When payment first failed; service pauses after the grace period.
+  pastDueSince         DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+/// An embeddable website widget that shows a business's Google reviews.
+/// `publicId` is what goes in the embed snippet; it is not a secret, so the
+/// feed only answers for the website domains listed in `allowedDomains`.
+model Widget {
+  id             String       @id @default(cuid())
+  publicId       String       @unique
+  brandId        String
+  name           String
+  layout         WidgetLayout @default(CAROUSEL)
+  /// Empty = all synced locations.
+  locationIds    String[]     @default([])
+  minRating      Int          @default(4)
+  maxReviews     Int          @default(12)
+  /// Only show reviews that have written text.
+  requireComment Boolean      @default(true)
+  /// { accent, background, text, radius } - see widget.dto.ts.
+  theme          Json?
+  allowedDomains String[]     @default([])
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@map("widgets")
+}
+
+model NotificationLog {
+  id       String              @id @default(cuid())
+  reviewId String
+  channel  NotificationChannel
+  sentAt   DateTime            @default(now())
+  status   String
+  error    String?
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+  @@map("notification_logs")
+}
+
+/// One row per scheduled/queued job execution.
+model JobRunLog {
+  id         String    @id @default(cuid())
+  jobName    String
+  brandId    String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     JobStatus @default(RUNNING)
+  error      String?
+
+  @@index([jobName, startedAt])
+  @@map("job_run_logs")
+}
+
+/// Stripe / HubSpot webhook event ids already handled, so a redelivered event
+/// is acknowledged without being applied twice.
+model ProcessedWebhookEvent {
+  id          String   @id
+  source      String
+  processedAt DateTime @default(now())
+
+  @@map("processed_webhook_events")
+}
