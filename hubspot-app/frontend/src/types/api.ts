@@ -134,6 +134,7 @@ export interface Reply {
   aiModel: string;
   approvedByUserId: string | null;
   postedAt: string | null;
+  failureReason: string | null;
 }
 
 export interface ReviewAnalysis {

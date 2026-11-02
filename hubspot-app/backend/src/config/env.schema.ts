@@ -114,6 +114,17 @@ export const envSchema = z.object({
     z.boolean().default(false),
   ),
 
+  // Testing safety: run the whole posting path but never call Google. Each
+  // reply that would have gone out is logged and marked FAILED with a
+  // "Dry run" reason, so it is not picked up again.
+  POST_DRY_RUN: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
+    z.boolean().default(false),
+  ),
+  // Testing safety: when set, replies are only posted for these Google
+  // locations (the number in "locations/123", comma-separated). Empty = all.
+  POST_ALLOWED_LOCATION_IDS: z.string().default(""),
+
 });
 
 export type Env = z.infer<typeof envSchema>;

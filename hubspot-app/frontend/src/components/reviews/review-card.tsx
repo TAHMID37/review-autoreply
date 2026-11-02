@@ -47,7 +47,15 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
               <span className="text-gray-400">({formatRelativeTime(review.reviewedAt)})</span>
             </span>
             <span className="ml-auto">
-              <StatusBadge status={repliedOnGoogle ? "REPLIED_ON_GOOGLE" : reply?.status} />
+              <StatusBadge
+                status={
+                  repliedOnGoogle
+                    ? "REPLIED_ON_GOOGLE"
+                    : reply?.status === "FAILED" && reply.failureReason?.startsWith("Dry run")
+                      ? "DRY_RUN"
+                      : reply?.status
+                }
+              />
             </span>
           </div>
 
@@ -143,6 +151,7 @@ const BADGE_STYLES: Record<string, { label: string; className: string }> = {
   PENDING_APPROVAL: { label: "Needs approval", className: "bg-brand-pink/10 text-brand-pink" },
   GENERATED: { label: "Draft ready", className: "bg-gray-100 text-gray-600" },
   FAILED: { label: "Failed", className: "bg-red-50 text-red-700" },
+  DRY_RUN: { label: "Dry run: not posted", className: "bg-amber-50 text-amber-700" },
   REJECTED: { label: "Rejected", className: "bg-gray-100 text-gray-500" },
 };
 

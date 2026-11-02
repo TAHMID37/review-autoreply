@@ -5,6 +5,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { Env } from "../config/env.schema";
 import { APP_ENV } from "../config/env.token";
 import { GoogleReplyWriter } from "./google-reply-writer";
+import { isLocationAllowed, parseAllowedLocationIds } from "./post-allowlist";
 import { PlatformAccountsService } from "./platform-accounts.service";
 
 /** Replies we will never (re)post: already public, or explicitly rejected. */
@@ -20,6 +21,9 @@ const BATCH_SIZE = 50;
  * - Automatic (a draft whose rule delay has passed): additionally requires the
  *   business to have switched auto-replies on with consent, and only for
  *   reviews left after that moment - so the backlog is never auto-replied.
+ *
+ * Two testing safety nets on top: POST_DRY_RUN never calls Google, and
+ * POST_ALLOWED_LOCATION_IDS limits posting to the listed locations.
  */
 @Injectable()
 export class ReviewPosterService {
@@ -31,7 +35,11 @@ export class ReviewPosterService {
     private readonly writer: GoogleReplyWriter,
     private readonly billing: BillingService,
     @Inject(APP_ENV) private readonly env: Env,
-  ) {}
+  ) {
+    this.allowedLocationIds = parseAllowedLocationIds(env.POST_ALLOWED_LOCATION_IDS);
+  }
+
+  private readonly allowedLocationIds: string[];
 
   get enabled(): boolean {
     return this.env.AUTO_POST_ENABLED;
@@ -48,6 +56,9 @@ export class ReviewPosterService {
     });
     if (!reply) throw new NotFoundException(`Reply ${replyId} not found`);
     if (reply.status === ReplyStatus.POSTED) return reply;
+    if (!this.enabled) {
+      throw new ForbiddenException("Posting to Google is switched off on this server (AUTO_POST_ENABLED=false).");
+    }
     if (UNPOSTABLE.includes(reply.status)) {
       throw new BadRequestException(`Reply ${replyId} is ${reply.status} and cannot be posted.`);
     }
@@ -63,11 +74,25 @@ export class ReviewPosterService {
       include: { platformAccount: true },
     });
     if (!link) throw new BadRequestException("This review's location is not linked to a connected Google account.");
+    if (!isLocationAllowed(link.externalLocationId, this.allowedLocationIds)) {
+      throw new ForbiddenException("Posting to this location is not allowed on this server (POST_ALLOWED_LOCATION_IDS).");
+    }
 
     const reviewResource = `${link.externalLocationId}/reviews/${reply.review.externalReviewId}`;
 
     try {
       const token = await this.accounts.getValidAccessToken(link.platformAccount);
+      if (this.env.POST_DRY_RUN) {
+        this.logger.warn(`[DRY RUN] Would post reply ${reply.id} to ${reviewResource}:\n${text}`);
+        const [dryRun] = await this.prisma.$transaction([
+          this.prisma.reply.update({
+            where: { id: reply.id },
+            data: { status: ReplyStatus.FAILED, failureReason: "Dry run: not posted to Google." },
+          }),
+          this.prisma.review.update({ where: { id: reply.reviewId }, data: { hubspotDirty: true } }),
+        ]);
+        return dryRun;
+      }
       await this.writer.updateReply(token, reviewResource, text);
       const [posted] = await this.prisma.$transaction([
         this.prisma.reply.update({
@@ -108,7 +133,19 @@ export class ReviewPosterService {
   async postDue(brand: Brand): Promise<{ posted: number; failed: number }> {
     if (!this.enabled || brand.status !== BrandStatus.ACTIVE) return { posted: 0, failed: 0 };
 
-    const ofBrand: Prisma.ReviewWhereInput = { location: { brandId: brand.id, syncEnabled: true }, removedAt: null };
+    const ofBrand: Prisma.ReviewWhereInput = {
+      location: {
+        brandId: brand.id,
+        syncEnabled: true,
+        // Skip locations outside the allowlist rather than failing them every run.
+        ...(this.allowedLocationIds.length > 0 && {
+          platformLocations: {
+            some: { OR: this.allowedLocationIds.map((id) => ({ externalLocationId: { endsWith: `locations/${id}` } })) },
+          },
+        }),
+      },
+      removedAt: null,
+    };
     const due: Prisma.ReplyWhereInput[] = [{ status: ReplyStatus.APPROVED, review: ofBrand }];
     if (brand.autoReplyEnabled && brand.autoReplyStartAt) {
       due.push({
