@@ -2,7 +2,7 @@
   "uid": "review_auto_reply_app",
   "type": "app",
   "config": {
-    "name": "Review Auto-Reply",
+    "name": "ReviewPilot by iBuz",
     "description": "Pulls your Google reviews, replies automatically with your own templates, saves every review on the reviewer's HubSpot contact, and shows your reviews on your website.",
     "distribution": "marketplace",
     "auth": {

@@ -37,6 +37,16 @@ export class CreateWidgetDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
 }
 
+/** Same settings as a widget, but the name is not needed to preview one. */
+export class CreateWidgetPreviewDto {
+  @IsOptional() @IsEnum(WidgetLayout) layout?: WidgetLayout;
+  @IsOptional() @IsArray() @IsString({ each: true }) locationIds?: string[];
+  @IsOptional() @IsInt() @Min(1) @Max(5) minRating?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(50) maxReviews?: number;
+  @IsOptional() @IsBoolean() requireComment?: boolean;
+  @IsOptional() @ValidateNested() @Type(() => WidgetThemeDto) theme?: WidgetThemeDto;
+}
+
 export class UpdateWidgetDto {
   @IsOptional() @IsString() @IsNotEmpty() name?: string;
   @IsOptional() @IsEnum(WidgetLayout) layout?: WidgetLayout;

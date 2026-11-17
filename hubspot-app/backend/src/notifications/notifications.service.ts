@@ -5,7 +5,6 @@ import { APP_ENV } from "../config/env.token";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { ReviewWithDetail } from "../reviews/reviews.service";
 import { EmailNotifierService } from "./email-notifier.service";
-import { SlackNotifierService } from "./slack-notifier.service";
 
 @Injectable()
 export class NotificationsService {
@@ -13,7 +12,6 @@ export class NotificationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly slack: SlackNotifierService,
     private readonly email: EmailNotifierService,
     @Inject(APP_ENV) private readonly env: Env,
   ) {}
@@ -23,20 +21,18 @@ export class NotificationsService {
    * notification_logs — so "was anyone actually told about this?" is
    * answerable from the database instead of from someone's inbox.
    *
-   * A failing channel is logged and swallowed: a Slack outage must not stop
+   * A failing send is logged and swallowed: an email outage must not stop
    * the review from being safely held for approval.
    *
-   * Each business sets its own alert emails and Slack webhook in Settings.
+   * Each business sets its own alert emails in Settings.
    * ALERT_EMAIL_TO is only a fallback for a business that has set none.
    */
   async notifyNeedsApproval(review: ReviewWithDetail, reason: string): Promise<void> {
     const brand = review.location.brand;
     const message = this.buildMessage(review, reason);
     const recipients = (brand.alertEmails.length ? brand.alertEmails.join(",") : this.env.ALERT_EMAIL_TO?.trim()) ?? "";
-    const slackUrl = brand.slackWebhookUrl;
 
     await Promise.all([
-      this.dispatch(NotificationChannel.SLACK, review.id, () => this.slack.send(slackUrl!, message), Boolean(slackUrl)),
       this.dispatch(
         NotificationChannel.EMAIL,
         review.id,

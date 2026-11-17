@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** dotenv turns `KEY=` into an empty string, not undefined - without this, an
- *  optional field left blank on purpose (e.g. to disable Slack alerts) would
+ *  optional field left blank on purpose (e.g. to disable SMTP) would
  *  fail a `.url()`/`.number()` check instead of being treated as "not set". */
 const blankToUndefined = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -61,7 +61,7 @@ export const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().optional()),
   /** Recurring monthly Price, billed per location (quantity = synced locations). */
   STRIPE_PRICE_ID: z.preprocess(blankToUndefined, z.string().optional()),
-  STRIPE_TRIAL_DAYS: z.coerce.number().int().min(0).default(0),
+  STRIPE_TRIAL_DAYS: z.coerce.number().int().min(0).default(90),
   BILLING_ENFORCED: z.preprocess(
     (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
     z.boolean().default(false),
@@ -77,13 +77,13 @@ export const envSchema = z.object({
   ),
 
   // AI provider (optional; drafting is template-based)
-  AI_PROVIDER: z.enum(["openai", "anthropic", "gemini", "mock"]).default("openai"),
+  AI_PROVIDER: z.enum(["openai", "anthropic", "gemini", "mock"]).default("mock"),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
 
   // Notifications. SMTP sends every business's approval emails; each business
-  // sets its own recipients and Slack webhook in Settings.
+  // sets its own recipients in Settings.
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.preprocess(blankToUndefined, z.coerce.number().int().positive().optional()),
   SMTP_USER: z.string().optional(),

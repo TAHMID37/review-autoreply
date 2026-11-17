@@ -54,7 +54,7 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
       title="Plan"
       description={
         billing.enforced
-          ? "Billed monthly per synced location. Adding or removing a location updates your bill automatically."
+          ? `${billing.price ? `${formatPrice(billing.price)} per location, billed ${billing.price.interval}ly. ` : "Billed monthly per synced location. "}Adding or removing a location updates your bill automatically.`
           : "Billing is not switched on for this server yet, so everything is included for now."
       }
       action={
@@ -70,7 +70,7 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
             className={PRIMARY_BUTTON}
             title={billing.syncedLocations === 0 ? "Pick at least one location first" : undefined}
           >
-            {busy ? "Opening…" : billing.trialDays > 0 ? `Start ${billing.trialDays}-day free trial` : "Choose plan"}
+            {busy ? "Opening…" : billing.trialDays > 0 ? `Start ${trialLabel(billing.trialDays)} free trial` : "Choose plan"}
           </button>
         ))
       }
@@ -84,8 +84,11 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
           </Notice>
         )}
         {billing.enforced && (
-          <dl className="grid gap-3 text-sm sm:grid-cols-3">
+          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Status" value={STATUS_LABEL[billing.status]} />
+            {billing.price && billing.status !== "NONE" && (
+              <Stat label="Your price" value={formatPrice({ ...billing.price, amount: billing.price.amount * (billing.quantity || billing.syncedLocations) })} />
+            )}
             <Stat label="Locations billed" value={`${billing.quantity || billing.syncedLocations}`} />
             <Stat
               label={billing.status === "TRIALING" ? "Trial ends" : billing.cancelAtPeriodEnd ? "Ends on" : "Renews"}
@@ -108,6 +111,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatPrice(p: { amount: number; currency: string }): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency.toUpperCase() }).format(p.amount / 100);
+}
+
 function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—";
+}
+
+/** 90 -> "3-month", 14 -> "14-day". */
+function trialLabel(days: number): string {
+  return days % 30 === 0 ? `${days / 30}-month` : `${days}-day`;
 }

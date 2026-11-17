@@ -43,6 +43,14 @@ export interface ListReviewsResult {
   allExternalIds: string[];
   /** Reviews that already carry an owner reply on Google, with that reply. */
   answered: GoogleOwnerReply[];
+  /** Google's own average and total for the location. They include ratings
+   *  left without text, which the reviews list does not. Null if not returned. */
+  summary: GoogleRatingSummary | null;
+}
+
+export interface GoogleRatingSummary {
+  averageRating: number;
+  totalReviewCount: number;
 }
 
 export interface GoogleOwnerReply {
@@ -83,7 +91,10 @@ export class GoogleReviewsClient {
   async listReviews(accessToken: string, accountName: string, locationName: string): Promise<ListReviewsResult> {
     const locationId = locationName.replace(/^locations\//, "");
     const url = `${REVIEWS_BASE}/${accountName}/locations/${locationId}/reviews`;
-    const raw = await this.paged<RawReview>(url, accessToken, "reviews");
+    let summary: GoogleRatingSummary | null = null;
+    const raw = await this.paged<RawReview>(url, accessToken, "reviews", (page) => {
+      summary = parseRatingSummary(page) ?? summary;
+    });
 
     // Every review id Google currently serves for this location (answered or
     // not). Sync uses this to detect reviews it removed since we last saw them.
@@ -107,11 +118,17 @@ export class GoogleReviewsClient {
       reviews: raw.map(mapReview).filter((r): r is GoogleReview => r !== null),
       allExternalIds,
       answered,
+      summary,
     };
   }
 
   /** GETs every page of a list endpoint, following pageToken. Read-only. */
-  private async paged<T>(baseUrl: string, accessToken: string, field: string): Promise<T[]> {
+  private async paged<T>(
+    baseUrl: string,
+    accessToken: string,
+    field: string,
+    onPage?: (page: Record<string, unknown>) => void,
+  ): Promise<T[]> {
     const out: T[] = [];
     let pageToken: string | undefined;
     do {
@@ -125,6 +142,7 @@ export class GoogleReviewsClient {
       }
 
       const json = (await response.json()) as Record<string, unknown>;
+      onPage?.(json);
       const items = (json[field] as T[] | undefined) ?? [];
       out.push(...items);
       pageToken = json["nextPageToken"] as string | undefined;
@@ -132,6 +150,14 @@ export class GoogleReviewsClient {
 
     return out;
   }
+}
+
+/** Google puts `averageRating` and `totalReviewCount` on every page of the reviews list. */
+export function parseRatingSummary(page: Record<string, unknown>): GoogleRatingSummary | null {
+  const averageRating = Number(page["averageRating"]);
+  const totalReviewCount = Number(page["totalReviewCount"]);
+  if (!Number.isFinite(averageRating) || !Number.isFinite(totalReviewCount) || totalReviewCount <= 0) return null;
+  return { averageRating, totalReviewCount };
 }
 
 interface RawReview {

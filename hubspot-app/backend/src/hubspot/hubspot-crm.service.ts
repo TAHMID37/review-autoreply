@@ -1,7 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Brand, BrandStatus, HubSpotMatch, NewContactPolicy, Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { buildNameFilters, buildNoteBody, isAnonymousReviewer, parseReviewerName } from "./contact-matching";
+import {
+  buildNameFilters,
+  buildNoteBody,
+  buildReviewProperties,
+  isAnonymousReviewer,
+  parseReviewerName,
+  REVIEW_PROPERTY,
+} from "./contact-matching";
 import { HubSpotApiClient, HubSpotApiError, HubSpotNotInstalledError } from "./hubspot-api.client";
 
 /** Our contact properties, created in each business's HubSpot on install. */
@@ -9,6 +16,30 @@ export const PROPERTY_GROUP = "google_reviews";
 export const SOURCE_PROPERTY = "google_review_source";
 export const SOURCE_VALUE = "google_review";
 export const DUPLICATE_PROPERTY = "google_review_possible_duplicate";
+
+/** Bump when PROPERTY_DEFINITIONS grows. Businesses below it get the new
+ *  properties created and their reviews re-synced once (the back-fill). */
+export const PROPERTIES_VERSION = 2;
+
+interface PropertyDefinition {
+  name: string;
+  label: string;
+  description: string;
+  type: "number" | "string" | "date";
+  fieldType: "number" | "text" | "textarea" | "date";
+}
+
+/** The Google review properties on a contact. They show the contact's latest review. */
+export const PROPERTY_DEFINITIONS: PropertyDefinition[] = [
+  { name: REVIEW_PROPERTY.rating, label: "Google user rating", description: "Star rating (1 to 5) of the contact's latest Google review.", type: "number", fieldType: "number" },
+  { name: REVIEW_PROPERTY.comment, label: "Google user comment", description: "What the contact wrote in their latest Google review.", type: "string", fieldType: "textarea" },
+  { name: REVIEW_PROPERTY.ownerComment, label: "Google owner comment", description: "The business's reply to the latest Google review (written by AI or by hand).", type: "string", fieldType: "textarea" },
+  { name: REVIEW_PROPERTY.date, label: "Google review date", description: "Date of the contact's latest Google review.", type: "date", fieldType: "date" },
+  { name: REVIEW_PROPERTY.location, label: "Google review location", description: "Location the latest Google review was left for.", type: "string", fieldType: "text" },
+  { name: REVIEW_PROPERTY.replyStatus, label: "Google reply status", description: "Whether the reply to the latest review is waiting, scheduled or posted.", type: "string", fieldType: "text" },
+  { name: REVIEW_PROPERTY.link, label: "Google review link", description: "Link to the location on Google.", type: "string", fieldType: "text" },
+  { name: REVIEW_PROPERTY.count, label: "Google review count", description: "How many Google reviews this contact has left.", type: "number", fieldType: "number" },
+];
 
 /** HubSpot-defined association type: note -> contact. */
 const NOTE_TO_CONTACT = 202;
@@ -54,6 +85,34 @@ export class HubSpotCrmService {
 
   /** Creates our property group and contact properties. Safe to re-run. */
   async ensureProperties(brandId: string): Promise<void> {
+    try {
+      await this.createProperties(brandId);
+    } catch (error) {
+      // HubSpot refusing (typically the portal's custom-property limit) is not a
+      // failure of the sync: the reviews still go in as notes. Anything else
+      // (rate limit, outage) is retried on the next run.
+      if (!isRefusal(error)) throw error;
+      const reason = errorMessage(error).slice(0, 500);
+      this.logger.warn(`Could not create review properties for business ${brandId}: ${reason}`);
+      await this.prisma.brand.update({
+        where: { id: brandId },
+        data: { hubspotPropertiesBlockedReason: reason, hubspotPropertiesReadyAt: null, hubspotPropertiesVersion: PROPERTIES_VERSION },
+      });
+      return;
+    }
+    await this.prisma.brand.update({
+      where: { id: brandId },
+      data: { hubspotPropertiesBlockedReason: null, hubspotPropertiesReadyAt: new Date(), hubspotPropertiesVersion: PROPERTIES_VERSION },
+    });
+    // Back-fill: reviews already saved before these properties existed are
+    // written again once, so existing contacts get their values.
+    await this.prisma.review.updateMany({
+      where: { hubspotContactId: { not: null }, location: { brandId } },
+      data: { hubspotDirty: true },
+    });
+  }
+
+  private async createProperties(brandId: string): Promise<void> {
     await this.createIgnoringConflict(brandId, "/crm/v3/properties/contacts/groups", {
       name: PROPERTY_GROUP,
       label: "Google reviews",
@@ -83,7 +142,13 @@ export class HubSpotCrmService {
         { label: "No", value: "false", displayOrder: 1 },
       ],
     });
-    await this.prisma.brand.update({ where: { id: brandId }, data: { hubspotPropertiesReadyAt: new Date() } });
+    for (const def of PROPERTY_DEFINITIONS) {
+      await this.createIgnoringConflict(brandId, "/crm/v3/properties/contacts", {
+        ...def,
+        groupName: PROPERTY_GROUP,
+        formField: false,
+      });
+    }
   }
 
   /** Writes every changed review of every installed business to HubSpot. */
@@ -103,10 +168,12 @@ export class HubSpotCrmService {
     return total;
   }
 
-  async syncBrand(brand: Brand): Promise<CrmSyncSummary> {
+  async syncBrand(initial: Brand): Promise<CrmSyncSummary> {
     const summary = emptySummary();
-    if (!brand.hubspotPropertiesReadyAt) {
+    let brand = initial;
+    if (brand.hubspotPropertiesVersion < PROPERTIES_VERSION) {
       await this.ensureProperties(brand.id);
+      brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brand.id } });
     }
 
     const dirty = await this.prisma.review.findMany({
@@ -166,6 +233,7 @@ export class HubSpotCrmService {
     }
 
     const noteId = await this.writeNote(brand, review, contactId);
+    await this.writeContactProperties(brand, review, contactId);
     await this.prisma.review.update({
       where: { id: review.id },
       data: { hubspotNoteId: noteId, hubspotDirty: false, hubspotSyncedAt: new Date(), hubspotSyncError: null },
@@ -217,11 +285,47 @@ export class HubSpotCrmService {
       properties: {
         firstname: name.first,
         ...(name.last ? { lastname: name.last } : {}),
-        [SOURCE_PROPERTY]: SOURCE_VALUE,
-        ...(ambiguous ? { [DUPLICATE_PROPERTY]: "true" } : {}),
+        // Our own properties may not exist when HubSpot refused to create them.
+        ...(brand.hubspotPropertiesBlockedReason
+          ? {}
+          : { [SOURCE_PROPERTY]: SOURCE_VALUE, ...(ambiguous ? { [DUPLICATE_PROPERTY]: "true" } : {}) }),
       },
     });
     return { contactId: created.id, match: ambiguous ? HubSpotMatch.CREATED_AMBIGUOUS : HubSpotMatch.CREATED };
+  }
+
+  /**
+   * Puts the contact's latest review into its Google review properties, so the
+   * business can filter, list and automate on them. Skipped when this review is
+   * an older one that was already saved, since nothing about the latest changed.
+   */
+  private async writeContactProperties(brand: Brand, review: ReviewForCrm, contactId: string): Promise<void> {
+    if (brand.hubspotPropertiesBlockedReason) return; // notes only
+    const where = { hubspotContactId: contactId, removedAt: null, location: { brandId: brand.id } };
+    const [latest, count] = await Promise.all([
+      this.prisma.review.findFirst({ where, ...REVIEW_FOR_CRM, orderBy: { reviewedAt: "desc" } }),
+      this.prisma.review.count({ where }),
+    ]);
+    // An older, already-saved review changing (a reply posted) leaves the latest
+    // untouched. A removed review always refreshes: it may have been the latest.
+    if (latest && latest.id !== review.id && review.hubspotSyncedAt && !review.removedAt) return;
+
+    const properties = buildReviewProperties(
+      latest
+        ? {
+            rating: latest.rating,
+            reviewText: latest.reviewText,
+            reviewedAt: latest.reviewedAt,
+            locationName: latest.location.name,
+            mapsUri: latest.location.mapsUri,
+            reply: latest.reply
+              ? { text: latest.reply.finalReply?.trim() || latest.reply.aiDraft, status: latest.reply.status }
+              : null,
+          }
+        : null,
+      count,
+    );
+    await this.hubspot.request(brand.id, "PATCH", `/crm/v3/objects/contacts/${contactId}`, { properties });
   }
 
   /** Creates the review's note, or updates it in place when it already exists. */
@@ -302,4 +406,9 @@ function emptySummary(): CrmSyncSummary {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** HubSpot said no (limit reached, missing permission) - not a transient error. */
+function isRefusal(error: unknown): boolean {
+  return error instanceof HubSpotApiError && error.status >= 400 && error.status < 500 && error.status !== 409 && error.status !== 429;
 }

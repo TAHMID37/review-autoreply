@@ -92,6 +92,12 @@ enum CommentCondition {
 }
 
 /// Which reviewers get a HubSpot contact created when no existing contact matches.
+enum ReportFrequency {
+  NONE
+  WEEKLY
+  MONTHLY
+}
+
 enum NewContactPolicy {
   /// Every reviewer (recommended in the plan).
   ALL_REVIEWERS
@@ -154,14 +160,23 @@ model Brand {
   autoReplyStartAt         DateTime?
 
   /// Per-business approval alerts. Blank = channel off for this business.
-  alertEmails     String[] @default([])
-  slackWebhookUrl String?
+  alertEmails String[] @default([])
 
   /// Saving reviews under HubSpot contacts.
   crmSyncEnabled          Boolean          @default(true)
   newContactPolicy        NewContactPolicy @default(ALL_REVIEWERS)
   /// Set once our contact properties exist in this portal.
   hubspotPropertiesReadyAt DateTime?
+  /// Which set of contact properties exists in this portal. Bumped in code when
+  /// the set grows, so installed businesses pick up new properties and back-fill.
+  hubspotPropertiesVersion Int       @default(0)
+  /// Set when HubSpot refused to create our properties (usually the portal's
+  /// custom-property limit). Reviews are then saved as notes only.
+  hubspotPropertiesBlockedReason String?
+
+  /// Emailed review report (to `alertEmails`). NONE = off.
+  reportFrequency   ReportFrequency @default(NONE)
+  reportLastSentAt  DateTime?
 
   uninstalledAt DateTime?
   createdAt     DateTime  @default(now())
@@ -293,6 +308,12 @@ model Location {
   mapsUri          String?
   /// Only ticked locations are synced and billed. New locations start unticked.
   syncEnabled      Boolean  @default(false)
+  /// Google's own average rating and review count for the listing, refreshed
+  /// on every sync. Used by the rating goal calculator, because they include
+  /// ratings left without text that our synced reviews do not.
+  googleAverageRating Float?
+  googleTotalReviews  Int?
+  googleSummaryAt     DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -357,6 +378,8 @@ model Review {
   status           ReviewStatus @default(NEW)
   /// Set when the review is no longer returned by the platform.
   removedAt        DateTime?
+  /// Hidden by the business: never shown in website widgets.
+  hiddenFromWidgets Boolean     @default(false)
 
   // ── Saved under a HubSpot contact ──
   hubspotContactId String?

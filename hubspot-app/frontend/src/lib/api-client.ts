@@ -60,3 +60,24 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 
   return (await response.json()) as T;
 }
+
+/** Downloads a file from the API (the bearer token can't ride a plain link). */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const token = getStoredToken();
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  } catch {
+    throw new ApiError(0, `Cannot reach the API at ${API_URL}. Is the backend running?`);
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, body?.message ?? response.statusText);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}

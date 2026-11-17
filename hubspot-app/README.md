@@ -1,4 +1,4 @@
-# Review Auto-Reply — HubSpot Marketplace app
+# ReviewPilot by iBuz — HubSpot Marketplace app
 
 The multi-business edition of the review auto-reply system. Any business can install it from
 HubSpot, connect its Google Business Profile, pick its locations and choose a plan. From then on its
@@ -16,7 +16,7 @@ The plan this implements is [PLAN.md](PLAN.md).
 | Sign-in | email + password | **Sign in with HubSpot** (OAuth), no passwords |
 | Google locations | filtered by RTO code | the business ticks the ones it wants |
 | Auto-reply switch | `AUTO_POST_ENABLED` for the deployment | per business, with recorded consent, plus the platform switch |
-| Approval alerts | env `ALERT_EMAIL_TO`, `SLACK_WEBHOOK_URL` | per business, in Settings |
+| Approval alerts | env `ALERT_EMAIL_TO` | per business, by email, in Settings |
 | New | | HubSpot contacts + notes, Stripe billing, website widget, HubSpot app card + home page |
 
 The review pipeline (ingest → draft from templates/rules → hold or schedule → post) is the same code,

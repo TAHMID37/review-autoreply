@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PeriodReportSection } from "@/components/reports/period-report";
+import { RatingGoalCard } from "@/components/reports/rating-goal-card";
 import { ResponseRateMeter } from "@/components/reports/response-rate-meter";
 import { WeeklyVolumeChart } from "@/components/reports/weekly-volume-chart";
 import { StatTile } from "@/components/reviews/stat-tile";
@@ -48,7 +50,7 @@ export default function ReportsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-ink">Monthly Report</h1>
+          <h1 className="text-xl font-bold text-ink">Reports</h1>
           <p className="text-sm text-gray-500">
             {brands.length === 1
               ? brands[0].name
@@ -91,11 +93,15 @@ export default function ReportsPage() {
         </div>
       )}
 
+      <PeriodReportSection />
+
+      <RatingGoalCard />
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-line bg-white p-4">
+        <div className="rounded-xl border border-line bg-white p-4 shadow-card">
           <WeeklyVolumeChart data={weekly} />
         </div>
-        <div className="rounded-lg border border-line bg-white p-4">
+        <div className="rounded-xl border border-line bg-white p-4 shadow-card">
           {stats && (
             <ResponseRateMeter
               responseRate={stats.responseRate}
@@ -108,7 +114,7 @@ export default function ReportsPage() {
       </div>
 
       {stats && (
-        <details className="rounded-lg border border-line bg-white p-4">
+        <details className="rounded-xl border border-line bg-white p-4 shadow-card">
           <summary className="cursor-pointer text-sm font-medium text-ink">
             View as table
           </summary>

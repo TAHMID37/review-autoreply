@@ -79,12 +79,36 @@ export class BillingService {
     };
   }
 
+  /** The per-location price set in Stripe, for display. Cached; null if unavailable. */
+  private priceCache: { at: number; value: { amount: number; currency: string; interval: string } | null } | null = null;
+
+  private async getPrice(): Promise<{ amount: number; currency: string; interval: string } | null> {
+    if (!this.stripe.configured || !this.env.STRIPE_PRICE_ID) return null;
+    if (this.priceCache && Date.now() - this.priceCache.at < 10 * 60 * 1000) return this.priceCache.value;
+    let value = null;
+    try {
+      const price = await this.stripe.request<{ unit_amount: number | null; currency: string; recurring?: { interval: string } }>(
+        "GET",
+        `/prices/${this.env.STRIPE_PRICE_ID}`,
+      );
+      if (price.unit_amount != null) {
+        value = { amount: price.unit_amount, currency: price.currency, interval: price.recurring?.interval ?? "month" };
+      }
+    } catch (error) {
+      this.logger.warn(`Could not read the Stripe price: ${error instanceof Error ? error.message : error}`);
+    }
+    this.priceCache = { at: Date.now(), value };
+    return value;
+  }
+
   async getStatus(brandId: string) {
     const [subscription, syncedLocations] = await Promise.all([
       this.prisma.subscription.findUnique({ where: { brandId } }),
       this.prisma.location.count({ where: { brandId, syncEnabled: true } }),
     ]);
+    const price = await this.getPrice();
     return {
+      price,
       enforced: this.enforced,
       configured: this.stripe.configured,
       status: subscription?.status ?? SubscriptionStatus.NONE,

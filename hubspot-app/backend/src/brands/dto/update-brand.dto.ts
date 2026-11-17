@@ -1,5 +1,5 @@
-import { NewContactPolicy } from "@prisma/client";
-import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUrl, ValidateIf } from "class-validator";
+import { NewContactPolicy, ReportFrequency } from "@prisma/client";
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
 /** Everything editable from Settings for the signed-in business. */
 export class UpdateBrandDto {
@@ -27,12 +27,6 @@ export class UpdateBrandDto {
   @IsEmail({}, { each: true, message: "Each alert email must be a valid email address" })
   alertEmails?: string[];
 
-  /** Empty string clears it. */
-  @IsOptional()
-  @ValidateIf((_, v) => v !== "")
-  @IsUrl({ protocols: ["https"], require_protocol: true }, { message: "Slack webhook must be an https:// URL" })
-  slackWebhookUrl?: string;
-
   @IsOptional()
   @IsBoolean()
   crmSyncEnabled?: boolean;
@@ -40,6 +34,11 @@ export class UpdateBrandDto {
   @IsOptional()
   @IsEnum(NewContactPolicy)
   newContactPolicy?: NewContactPolicy;
+
+  /** Emailed review report to the alert emails. NONE turns it off. */
+  @IsOptional()
+  @IsEnum(ReportFrequency)
+  reportFrequency?: ReportFrequency;
 }
 
 /**

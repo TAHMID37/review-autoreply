@@ -4,7 +4,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { AuthUserDto } from "../auth/dto/auth-user.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { EMBED_SCRIPT } from "./embed-script";
-import { CreateWidgetDto, UpdateWidgetDto } from "./widget.dto";
+import { CreateWidgetDto, CreateWidgetPreviewDto, UpdateWidgetDto } from "./widget.dto";
 import { WidgetsService } from "./widgets.service";
 
 @Controller("widgets")
@@ -16,6 +16,12 @@ export class WidgetsController {
   async list(@CurrentUser() user: AuthUserDto) {
     const widgets = await this.widgets.list(user.brandId);
     return widgets.map((w) => ({ ...w, snippet: this.widgets.snippet(w) }));
+  }
+
+  /** What a widget would show with these (unsaved) settings. Used by the editor's live preview. */
+  @Post("preview")
+  preview(@CurrentUser() user: AuthUserDto, @Body() dto: CreateWidgetPreviewDto) {
+    return this.widgets.preview(user.brandId, dto);
   }
 
   @Post()

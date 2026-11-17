@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PropertiesNotice } from "@/components/setup/properties-notice";
 import { StatTile } from "@/components/reviews/stat-tile";
 import { responseScopeLabel } from "@/lib/response-scope";
 import { apiFetch } from "@/lib/api-client";
@@ -36,6 +37,7 @@ export default function DashboardHomePage() {
           {user?.brand.name} - Google reviews and auto-replies across every location.
         </p>
       </div>
+      <PropertiesNotice />
 
       {setup && !setup.complete && (
         <Link

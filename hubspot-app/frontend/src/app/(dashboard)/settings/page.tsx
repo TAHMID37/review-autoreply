@@ -15,8 +15,9 @@ import {
   SECONDARY_BUTTON,
 } from "@/components/setup/ui";
 import { apiFetch } from "@/lib/api-client";
+import { PropertiesNotice } from "@/components/setup/properties-notice";
 import { useAuth } from "@/lib/auth-context";
-import type { AuthUser, Brand, NewContactPolicy } from "@/types/api";
+import type { AuthUser, Brand, NewContactPolicy, ReportFrequency } from "@/types/api";
 
 export default function SettingsPage() {
   const [brand, setBrand] = useState<Brand | null>(null);
@@ -30,7 +31,7 @@ export default function SettingsPage() {
   }, []);
 
   /** Saves part of the business settings and returns the updated record. */
-  async function save(patch: Partial<Brand> & { slackWebhookUrl?: string }) {
+  async function save(patch: Partial<Brand>) {
     if (!brand) return;
     setBrand(await apiFetch<Brand>(`/brands/${brand.id}`, { method: "PATCH", body: JSON.stringify(patch) }));
   }
@@ -47,6 +48,7 @@ export default function SettingsPage() {
           {brand.hubspotDomain ? ` (HubSpot account ${brand.hubspotDomain})` : ""}.
         </p>
       </div>
+      <PropertiesNotice />
 
       <BusinessCard brand={brand} onSave={save} />
       <GoogleConnectCard returnTo="settings" onChange={() => setReloadKey((k) => k + 1)} />
@@ -54,13 +56,14 @@ export default function SettingsPage() {
       <AutoReplyCard brand={brand} onChange={setBrand} />
       <HubSpotContactsCard brand={brand} onSave={save} />
       <NotificationsCard brand={brand} onSave={save} />
+      <ReportEmailCard brand={brand} onSave={save} />
       <TeamCard />
       <UninstallCard brand={brand} />
     </div>
   );
 }
 
-type SaveFn = (patch: Partial<Brand> & { slackWebhookUrl?: string }) => Promise<void>;
+type SaveFn = (patch: Partial<Brand>) => Promise<void>;
 
 /** Wraps a save so each card shows its own saving / saved / error state. */
 function useSaver(onSave: SaveFn) {
@@ -85,9 +88,8 @@ function useSaver(onSave: SaveFn) {
 
 function BusinessCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
   const [name, setName] = useState(brand.name);
-  const [tone, setTone] = useState(brand.tone);
   const { run, isSaving, error, saved } = useSaver(onSave);
-  const changed = name.trim() !== brand.name || tone !== brand.tone;
+  const changed = name.trim() !== brand.name;
 
   return (
     <Card
@@ -98,12 +100,9 @@ function BusinessCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
         <Field label="Business name">
           <input value={name} onChange={(e) => setName(e.target.value)} className={FIELD_CLASS} />
         </Field>
-        <Field label="Reply tone" hint="Used if AI-written replies are switched on.">
-          <textarea value={tone} onChange={(e) => setTone(e.target.value)} rows={2} className={FIELD_CLASS} />
-        </Field>
         {error && <Notice kind="error">{error}</Notice>}
         {saved && !changed && <Notice kind="success">Saved.</Notice>}
-        <button onClick={() => run({ name: name.trim(), tone })} disabled={!changed || isSaving || !name.trim()} className={PRIMARY_BUTTON}>
+        <button onClick={() => run({ name: name.trim() })} disabled={!changed || isSaving || !name.trim()} className={PRIMARY_BUTTON}>
           {isSaving ? "Saving…" : "Save"}
         </button>
       </div>
@@ -165,14 +164,13 @@ function HubSpotContactsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }
 
 function NotificationsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
   const [emails, setEmails] = useState(brand.alertEmails.join(", "));
-  const [slack, setSlack] = useState("");
   const { run, isSaving, error, saved } = useSaver(onSave);
 
   const parsed = emails
     .split(/[\s,;]+/)
     .map((e) => e.trim())
     .filter(Boolean);
-  const changed = parsed.join(",") !== brand.alertEmails.join(",") || slack.trim() !== "";
+  const changed = parsed.join(",") !== brand.alertEmails.join(",");
 
   return (
     <Card title="Approval alerts" description="Who hears about a review waiting for a person to approve it.">
@@ -180,33 +178,54 @@ function NotificationsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) 
         <Field label="Email to" hint="Separate several with commas.">
           <input value={emails} onChange={(e) => setEmails(e.target.value)} className={FIELD_CLASS} placeholder="you@business.com" />
         </Field>
-        <Field label="Slack webhook" hint={brand.slackConfigured ? "Set. Paste a new one to replace it." : "Optional."}>
-          <input
-            value={slack}
-            onChange={(e) => setSlack(e.target.value)}
-            className={FIELD_CLASS}
-            placeholder="https://hooks.slack.com/services/…"
-          />
-        </Field>
         {error && <Notice kind="error">{error}</Notice>}
         {saved && !changed && <Notice kind="success">Saved.</Notice>}
-        <div className="flex gap-2">
-          <button
-            onClick={async () => {
-              await run({ alertEmails: parsed, ...(slack.trim() ? { slackWebhookUrl: slack.trim() } : {}) });
-              setSlack("");
-            }}
-            disabled={!changed || isSaving}
-            className={PRIMARY_BUTTON}
-          >
-            {isSaving ? "Saving…" : "Save"}
-          </button>
-          {brand.slackConfigured && (
-            <button onClick={() => run({ slackWebhookUrl: "" })} disabled={isSaving} className={SECONDARY_BUTTON}>
-              Remove Slack
-            </button>
-          )}
-        </div>
+        <button onClick={() => run({ alertEmails: parsed })} disabled={!changed || isSaving} className={PRIMARY_BUTTON}>
+          {isSaving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+const REPORT_OPTIONS: { value: ReportFrequency; label: string; hint: string }[] = [
+  { value: "NONE", label: "Off", hint: "No report emails." },
+  { value: "WEEKLY", label: "Weekly", hint: "Every Monday, covering the week just finished." },
+  { value: "MONTHLY", label: "Monthly", hint: "On the 1st, covering the month just finished." },
+];
+
+function ReportEmailCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
+  const { run, isSaving, error, saved } = useSaver(onSave);
+  const hasEmails = brand.alertEmails.length > 0;
+
+  return (
+    <Card
+      title="Review report by email"
+      description="A short summary of your Google reviews, with the numbers attached as a CSV. It goes to the same emails as the approval alerts."
+    >
+      <div className="space-y-3">
+        <fieldset className="space-y-2">
+          {REPORT_OPTIONS.map((option) => (
+            <label key={option.value} className="flex items-start gap-2 text-sm text-ink">
+              <input
+                type="radio"
+                name="reportFrequency"
+                className="mt-1"
+                checked={brand.reportFrequency === option.value}
+                disabled={isSaving}
+                onChange={() => run({ reportFrequency: option.value })}
+              />
+              <span>
+                {option.label} <span className="text-muted">· {option.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        {brand.reportFrequency !== "NONE" && !hasEmails && (
+          <Notice kind="error">Add at least one email under Approval alerts, or no report can be sent.</Notice>
+        )}
+        {error && <Notice kind="error">{error}</Notice>}
+        {saved && !error && <Notice kind="success">Saved.</Notice>}
       </div>
     </Card>
   );

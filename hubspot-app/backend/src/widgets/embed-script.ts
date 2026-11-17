@@ -113,12 +113,16 @@ export const EMBED_SCRIPT = String.raw`(function () {
       });
     }
   }
+  function rootOf(el) {
+    if (!el.__raRoot) el.__raRoot = el.attachShadow ? el.attachShadow({ mode: "open" }) : el;
+    return el.__raRoot;
+  }
   function mount(el) {
     if (el.getAttribute("data-ra-mounted")) return;
     el.setAttribute("data-ra-mounted", "1");
     var id = el.getAttribute("data-widget");
     if (!id || !API) return;
-    var root = el.attachShadow ? el.attachShadow({ mode: "open" }) : el;
+    var root = rootOf(el);
     fetch(API + "/public/widgets/" + encodeURIComponent(id) + "/feed", { credentials: "omit" })
       .then(function (r) {
         if (!r.ok) throw new Error("HTTP " + r.status);
@@ -137,6 +141,12 @@ export const EMBED_SCRIPT = String.raw`(function () {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
   else scan();
-  window.RAReviews = { refresh: scan };
+  // render(el, feed) draws a feed the caller already has (the dashboard's live preview).
+  window.RAReviews = {
+    refresh: scan,
+    render: function (el, feed) {
+      render(rootOf(el), feed);
+    },
+  };
 })();
 `;

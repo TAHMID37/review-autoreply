@@ -4,7 +4,6 @@ import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { AutoReplySettingDto, UpdateBrandDto } from "./dto/update-brand.dto";
 
-/** Never sent to the browser: the Slack URL is a secret, so only "is set" is. */
 const BRAND_SELECT = {
   id: true,
   name: true,
@@ -18,10 +17,11 @@ const BRAND_SELECT = {
   autoReplyConsentAt: true,
   autoReplyStartAt: true,
   alertEmails: true,
-  slackWebhookUrl: true,
   crmSyncEnabled: true,
   newContactPolicy: true,
+  reportFrequency: true,
   hubspotPropertiesReadyAt: true,
+  hubspotPropertiesBlockedReason: true,
   createdAt: true,
 } as const;
 
@@ -35,6 +35,15 @@ export class BrandsService {
     private readonly prisma: PrismaService,
     private readonly billing: BillingService,
   ) {}
+
+  /** After freeing up property space in HubSpot: the next sync tries again. */
+  async retryProperties(brandId: string): Promise<{ ok: true }> {
+    await this.prisma.brand.update({
+      where: { id: brandId },
+      data: { hubspotPropertiesVersion: 0, hubspotPropertiesBlockedReason: null },
+    });
+    return { ok: true };
+  }
 
   /** The setup checklist: what this business still has to do to go live. */
   async getSetup(brandId: string) {
@@ -76,20 +85,23 @@ export class BrandsService {
     if (!brand) {
       throw new NotFoundException(`Brand ${id} not found`);
     }
-    const { slackWebhookUrl, ...rest } = brand;
-    return { ...rest, slackConfigured: Boolean(slackWebhookUrl) };
+    return brand;
   }
 
   async update(brandId: string, id: string, dto: UpdateBrandDto) {
-    await this.findById(brandId, id);
-    const { slackWebhookUrl, alertEmails, name, ...rest } = dto;
+    const current = await this.findById(brandId, id);
+    const { alertEmails, name, ...rest } = dto;
+    // Switching reports on starts the clock now, so the first email goes out at
+    // the next week/month boundary rather than straight away.
+    const reportsSwitchedOn =
+      dto.reportFrequency !== undefined && dto.reportFrequency !== "NONE" && dto.reportFrequency !== current.reportFrequency;
     await this.prisma.brand.update({
       where: { id },
       data: {
         ...rest,
+        ...(reportsSwitchedOn ? { reportLastSentAt: new Date() } : {}),
         ...(name !== undefined ? { name: name.trim() } : {}),
         ...(alertEmails !== undefined ? { alertEmails: [...new Set(alertEmails.map((e) => e.trim().toLowerCase()))] } : {}),
-        ...(slackWebhookUrl !== undefined ? { slackWebhookUrl: slackWebhookUrl || null } : {}),
       },
     });
     return this.findById(brandId, id);

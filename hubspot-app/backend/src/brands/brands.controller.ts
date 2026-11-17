@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { AuthUserDto } from "../auth/dto/auth-user.dto";
 import { AdminGuard } from "../auth/guards/admin.guard";
@@ -19,6 +19,12 @@ export class BrandsController {
   @Get("me/setup")
   setup(@CurrentUser() user: AuthUserDto) {
     return this.brandsService.getSetup(user.brandId);
+  }
+
+  @Post("me/retry-properties")
+  @UseGuards(AdminGuard)
+  retryProperties(@CurrentUser() user: AuthUserDto) {
+    return this.brandsService.retryProperties(user.brandId);
   }
 
   @Get(":id")

@@ -113,7 +113,17 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
 
         for (const link of links) {
           const { accountName, locationName } = splitResource(link.externalLocationId);
-          const { reviews, allExternalIds, answered } = await this.google.listReviews(token, accountName, locationName);
+          const { reviews, allExternalIds, answered, summary: googleSummary } = await this.google.listReviews(token, accountName, locationName);
+          if (googleSummary) {
+            await this.prisma.location.update({
+              where: { id: link.locationId },
+              data: {
+                googleAverageRating: googleSummary.averageRating,
+                googleTotalReviews: googleSummary.totalReviewCount,
+                googleSummaryAt: new Date(),
+              },
+            });
+          }
           for (const r of reviews) {
             summary.reviewsSeen++;
             const outcome = await this.reviews.upsertFromPlatform({

@@ -17,7 +17,12 @@ export class EmailNotifierService {
     return this.transporter !== null;
   }
 
-  async send(to: string, subject: string, body: string): Promise<void> {
+  async send(
+    to: string,
+    subject: string,
+    body: string,
+    attachments?: { filename: string; content: string; contentType: string }[],
+  ): Promise<void> {
     if (!this.transporter) {
       return;
     }
@@ -27,8 +32,9 @@ export class EmailNotifierService {
       to,
       subject,
       text: body,
+      ...(attachments ? { attachments } : {}),
     });
-    this.logger.log(`Email alert sent to ${to}`);
+    this.logger.log(`Email sent to ${to}`);
   }
 
   private createTransporter(): Transporter | null {

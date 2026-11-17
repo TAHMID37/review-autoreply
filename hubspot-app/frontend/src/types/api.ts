@@ -38,6 +38,8 @@ export interface LoginResponse {
 }
 
 export type NewContactPolicy = "ALL_REVIEWERS" | "COMMENTERS_ONLY";
+export type ReportFrequency = "NONE" | "WEEKLY" | "MONTHLY";
+export type ReportPeriod = "week" | "month" | "year";
 
 /** The signed-in business (one HubSpot account). */
 export interface Brand {
@@ -53,10 +55,11 @@ export interface Brand {
   autoReplyConsentAt: string | null;
   autoReplyStartAt: string | null;
   alertEmails: string[];
-  slackConfigured: boolean;
   crmSyncEnabled: boolean;
   newContactPolicy: NewContactPolicy;
+  reportFrequency: ReportFrequency;
   hubspotPropertiesReadyAt: string | null;
+  hubspotPropertiesBlockedReason: string | null;
   createdAt: string;
 }
 
@@ -87,6 +90,8 @@ export interface Location {
 export type SubscriptionStatus = "NONE" | "TRIALING" | "ACTIVE" | "PAST_DUE" | "UNPAID" | "CANCELED" | "INCOMPLETE";
 
 export interface BillingStatus {
+  /** Per-location price from Stripe, in the currency's smallest unit (cents). */
+  price: { amount: number; currency: string; interval: string } | null;
   enforced: boolean;
   configured: boolean;
   status: SubscriptionStatus;
@@ -154,6 +159,7 @@ export interface Review {
   hubspotContactId: string | null;
   hubspotMatch: "EXISTING" | "CREATED" | "CREATED_AMBIGUOUS" | "SKIPPED" | null;
   hubspotSyncError: string | null;
+  hiddenFromWidgets: boolean;
   location: {
     id: string;
     name: string;
@@ -226,4 +232,33 @@ export interface AutoReplyRule {
   templateIds: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReportBucket {
+  start: string;
+  label: string;
+  total: number;
+  averageRating: number | null;
+  /** Reviews with 1, 2, 3, 4 and 5 stars. */
+  ratingMix: [number, number, number, number, number];
+  replied: number;
+  responseRate: number | null;
+}
+
+export interface PeriodReport {
+  period: ReportPeriod;
+  buckets: ReportBucket[];
+  byLocation: { locationId: string; name: string; total: number; averageRating: number | null }[];
+}
+
+export interface RatingGoalReport {
+  target: number;
+  effectiveTarget: number;
+  alreadyReached: boolean;
+  fiveStarNeeded: number | null;
+  oneStarRemovals: number | null;
+  currentAverage: number;
+  totalReviews: number;
+  source: "google" | "synced";
+  scope: string;
 }

@@ -81,6 +81,60 @@ const REPLY_STATUS_LABEL: Record<string, string> = {
   REJECTED: "Not replying",
 };
 
+/** Internal names of the review properties we keep on a contact. */
+export const REVIEW_PROPERTY = {
+  rating: "google_user_rating",
+  comment: "google_user_comment",
+  ownerComment: "google_owner_comment",
+  date: "google_review_date",
+  location: "google_review_location",
+  replyStatus: "google_reply_status",
+  link: "google_review_link",
+  count: "google_review_count",
+} as const;
+
+export interface LatestReview {
+  rating: number;
+  reviewText: string;
+  reviewedAt: Date;
+  locationName: string;
+  mapsUri?: string | null;
+  reply?: { text: string; status: string } | null;
+}
+
+/**
+ * Values for the contact's review properties. A contact property holds one
+ * value, so these always describe the contact's latest review (older reviews
+ * stay in notes). With no review left, every property is cleared (empty string
+ * is how HubSpot clears one) and the count is 0.
+ */
+export function buildReviewProperties(latest: LatestReview | null, count: number): Record<string, string> {
+  if (!latest) {
+    return {
+      [REVIEW_PROPERTY.rating]: "",
+      [REVIEW_PROPERTY.comment]: "",
+      [REVIEW_PROPERTY.ownerComment]: "",
+      [REVIEW_PROPERTY.date]: "",
+      [REVIEW_PROPERTY.location]: "",
+      [REVIEW_PROPERTY.replyStatus]: "",
+      [REVIEW_PROPERTY.link]: "",
+      [REVIEW_PROPERTY.count]: "0",
+    };
+  }
+  const replyShown = latest.reply && latest.reply.status !== "REJECTED";
+  return {
+    [REVIEW_PROPERTY.rating]: String(latest.rating),
+    [REVIEW_PROPERTY.comment]: latest.reviewText.trim(),
+    [REVIEW_PROPERTY.ownerComment]: replyShown ? latest.reply!.text.trim() : "",
+    // HubSpot date properties take a plain calendar date.
+    [REVIEW_PROPERTY.date]: latest.reviewedAt.toISOString().slice(0, 10),
+    [REVIEW_PROPERTY.location]: latest.locationName,
+    [REVIEW_PROPERTY.replyStatus]: latest.reply ? (REPLY_STATUS_LABEL[latest.reply.status] ?? latest.reply.status) : "No reply yet",
+    [REVIEW_PROPERTY.link]: latest.mapsUri ?? "",
+    [REVIEW_PROPERTY.count]: String(count),
+  };
+}
+
 /** The HTML body of the HubSpot note that represents one Google review. */
 export function buildNoteBody(c: NoteContent): string {
   const stars = "★".repeat(c.rating) + "☆".repeat(Math.max(0, 5 - c.rating));

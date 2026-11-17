@@ -102,8 +102,47 @@ export class WidgetsService {
       throw new ForbiddenException("Widget paused");
     }
 
+    return this.buildFeed(widget.brandId, widget.brand.name, {
+      layout: widget.layout,
+      theme: (widget.theme as Record<string, unknown> | null) ?? {},
+      locationIds: widget.locationIds,
+      minRating: widget.minRating,
+      maxReviews: widget.maxReviews,
+      requireComment: widget.requireComment,
+    });
+  }
+
+  /**
+   * What a widget would show with these settings, without saving anything.
+   * Powers the editor's live preview, so every choice shows up as it is made.
+   */
+  async preview(brandId: string, dto: Partial<CreateWidgetDto>): Promise<WidgetFeed> {
+    await this.assertLocations(brandId, dto.locationIds);
+    const brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, select: { name: true } });
+    return this.buildFeed(brandId, brand.name, {
+      layout: dto.layout ?? "CAROUSEL",
+      theme: (dto.theme as Record<string, unknown> | undefined) ?? {},
+      locationIds: dto.locationIds ?? [],
+      minRating: dto.minRating ?? 4,
+      maxReviews: dto.maxReviews ?? 12,
+      requireComment: dto.requireComment ?? true,
+    });
+  }
+
+  private async buildFeed(
+    brandId: string,
+    businessName: string,
+    widget: {
+      layout: Widget["layout"];
+      theme: Record<string, unknown>;
+      locationIds: string[];
+      minRating: number;
+      maxReviews: number;
+      requireComment: boolean;
+    },
+  ): Promise<WidgetFeed> {
     const locationWhere: Prisma.LocationWhereInput = {
-      brandId: widget.brandId,
+      brandId,
       syncEnabled: true,
       ...(widget.locationIds.length ? { id: { in: widget.locationIds } } : {}),
     };
@@ -114,6 +153,9 @@ export class WidgetsService {
       this.prisma.review.findMany({
         where: {
           ...base,
+          // Reviews the business ticked off never reach a website, whatever the
+          // rating. The average above still counts them, so it stays honest.
+          hiddenFromWidgets: false,
           rating: { gte: widget.minRating },
           ...(widget.requireComment ? { NOT: { reviewText: "" } } : {}),
         },
@@ -125,9 +167,9 @@ export class WidgetsService {
     ]);
 
     return {
-      businessName: widget.brand.name,
+      businessName,
       layout: widget.layout,
-      theme: (widget.theme as Record<string, unknown> | null) ?? {},
+      theme: widget.theme,
       averageRating: Math.round((aggregate._avg.rating ?? 0) * 10) / 10,
       totalReviews: aggregate._count,
       googleUrl: firstLocation?.mapsUri ?? null,

@@ -132,6 +132,12 @@ export class ReviewsService {
     });
   }
 
+  async setWidgetVisibility(brandId: string, id: string, hidden: boolean): Promise<{ id: string; hiddenFromWidgets: boolean }> {
+    const review = await this.prisma.review.findFirst({ where: { id, location: { brandId } }, select: { id: true } });
+    if (!review) throw new NotFoundException(`Review ${id} not found`);
+    return this.prisma.review.update({ where: { id }, data: { hiddenFromWidgets: hidden }, select: { id: true, hiddenFromWidgets: true } });
+  }
+
   async findById(brandId: string, id: string): Promise<ReviewWithDetail> {
     const review = await this.prisma.review.findFirst({ where: { id, location: { brandId } }, ...REVIEW_WITH_DETAIL });
     if (!review) {
