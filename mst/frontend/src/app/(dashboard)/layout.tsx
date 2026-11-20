@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
+import { GoogleConnectionBanner } from "@/components/layout/google-connection-banner";
 import { Topbar } from "@/components/layout/topbar";
 import { useAuth } from "@/lib/auth-context";
 
@@ -27,6 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Topbar />
+        <GoogleConnectionBanner />
         <main className="flex-1 bg-surface p-6">{children}</main>
       </div>
     </div>

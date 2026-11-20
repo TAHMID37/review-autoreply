@@ -150,6 +150,16 @@ export class PlatformAccountsService {
     }
   }
 
+  /**
+   * Whether syncing can work at all. Any login that is not CONNECTED (Google
+   * revoked it, or the token could no longer be refreshed) - or no login at
+   * all - means reviews and replies made on Google stop reaching the dashboard.
+   */
+  async health(): Promise<{ ok: boolean }> {
+    const accounts = await this.prisma.platformAccount.findMany({ select: { status: true } });
+    return { ok: accounts.length > 0 && accounts.every((a) => a.status === PlatformAccountStatus.CONNECTED) };
+  }
+
   listConnected(): Promise<PlatformAccount[]> {
     return this.prisma.platformAccount.findMany({ where: { status: PlatformAccountStatus.CONNECTED } });
   }

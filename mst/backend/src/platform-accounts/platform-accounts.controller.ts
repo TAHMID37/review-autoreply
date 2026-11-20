@@ -50,6 +50,13 @@ export class PlatformAccountsController {
     }
   }
 
+  /** Drives the "Google disconnected" banner. */
+  @Get("health")
+  @UseGuards(JwtAuthGuard)
+  health() {
+    return this.accounts.health();
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard)
   list() {
