@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { BrandStatus, HubSpotInstallation, HubSpotInstallStatus } from "@prisma/client";
+import { BillingService } from "../billing/billing.service";
 import { TokenVaultService } from "../common/crypto/token-vault.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { HubSpotAccessRevokedError, HubSpotOAuthService } from "./hubspot-oauth.service";
@@ -39,6 +40,7 @@ export class HubSpotApiClient {
     private readonly prisma: PrismaService,
     private readonly oauth: HubSpotOAuthService,
     private readonly vault: TokenVaultService,
+    private readonly billing: BillingService,
   ) {}
 
   async request<T>(brandId: string, method: string, path: string, body?: unknown): Promise<T> {
@@ -124,8 +126,10 @@ export class HubSpotApiClient {
 
   /**
    * Records that the app is no longer installed. Stops syncing, switches off
-   * auto-replies and keeps the business's data (they may reinstall). Deleting
-   * the data is a separate, explicit request.
+   * auto-replies and keeps the business's reviews (they may reinstall), but
+   * erases every stored credential: the HubSpot tokens, and each connected
+   * Google login (revoked at Google first). Reinstalling means connecting again.
+   * Deleting the reviews themselves is a separate, explicit request.
    */
   async markUninstalled(brandId: string, reason: string): Promise<void> {
     const now = new Date();
@@ -139,7 +143,33 @@ export class HubSpotApiClient {
         data: { status: BrandStatus.UNINSTALLED, uninstalledAt: now, autoReplyEnabled: false },
       }),
     ]);
+    await this.eraseCredentials(brandId);
+    // Without HubSpot we cannot deliver the service, so stop charging for it.
+    await this.billing.cancelImmediately(brandId).catch((e) =>
+      this.logger.error(`Could not cancel billing for ${brandId}: ${e instanceof Error ? e.message : e}`),
+    );
     this.logger.warn(`Business ${brandId} marked uninstalled: ${reason}`);
+  }
+
+  private async eraseCredentials(brandId: string): Promise<void> {
+    const accounts = await this.prisma.platformAccount.findMany({ where: { brandId, status: { not: "DISCONNECTED" } } });
+    for (const account of accounts) {
+      try {
+        if (account.refreshToken) {
+          const token = this.vault.decrypt(account.refreshToken);
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, { method: "POST" });
+        }
+      } catch (error) {
+        this.logger.warn(`Could not revoke Google access for ${account.id}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+    await this.prisma.$transaction([
+      this.prisma.platformAccount.updateMany({
+        where: { brandId },
+        data: { status: "DISCONNECTED", accessToken: "", refreshToken: "" },
+      }),
+      this.prisma.hubSpotInstallation.updateMany({ where: { brandId }, data: { accessToken: "", refreshToken: "" } }),
+    ]);
   }
 
   private async searchGate(brandId: string): Promise<void> {

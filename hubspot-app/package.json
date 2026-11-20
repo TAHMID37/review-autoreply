@@ -2,7 +2,7 @@
   "name": "review-autoreply-hubspot",
   "version": "0.1.0",
   "private": true,
-  "description": "ReviewPilot by iBuz as a multi-business HubSpot Marketplace app",
+  "description": "ReviewTune as a multi-business HubSpot Marketplace app",
   "workspaces": [
     "backend",
     "frontend"

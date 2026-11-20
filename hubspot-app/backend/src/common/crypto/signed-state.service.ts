@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { Env } from "../../config/env.schema";
 import { APP_ENV } from "../../config/env.token";
 
@@ -48,6 +48,8 @@ export class SignedStateService {
   }
 
   private hmac(input: string): string {
-    return createHmac("sha256", this.env.TOKEN_ENCRYPTION_KEY).update(input).digest("base64url");
+    // A key derived for this one purpose, so the token-encryption key is never also a signing key.
+    const key = createHash("sha256").update(`oauth-state:${this.env.TOKEN_ENCRYPTION_KEY}`).digest();
+    return createHmac("sha256", key).update(input).digest("base64url");
   }
 }

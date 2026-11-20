@@ -1,4 +1,4 @@
-# ReviewPilot by iBuz — HubSpot Marketplace app
+# ReviewTune — HubSpot Marketplace app
 
 The multi-business edition of the review auto-reply system. Any business can install it from
 HubSpot, connect its Google Business Profile, pick its locations and choose a plan. From then on its
@@ -97,11 +97,13 @@ who left a comment.
 | | |
 |---|---|
 | HubSpot developer account + app | create the app, then `hs project upload` from `hubspot-project/` |
-| Real domain | replace `REPLACE-WITH-OUR-DOMAIN` in `hubspot-project/src/app/app-hsmeta.json` and `cards/api.js`, `pages/api.js` |
+| Domain | `reviewtune.ibusinessformula.com.au` (dashboard at `/`, API at `/api/`); set in `hubspot-project/src/app/app-hsmeta.json`, `cards/api.js` and `pages/api.js` |
 | Check on a test portal | the points marked **verify** below |
 | Google OAuth | add `https://api.<domain>/platform-accounts/google/callback` to the Google Cloud OAuth client; submit the consent screen for verification (until then businesses see "unverified app") |
 | Stripe | create the product + monthly per-location Price, webhook to `https://api.<domain>/billing/webhook` with events `checkout.session.completed`, `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`, enable the customer portal |
 | Production env | `NODE_ENV=production`, `REVIEW_SYNC_ENABLED=true`, `AUTO_POST_ENABLED=true`, `BILLING_ENFORCED=true`, `DEV_LOGIN_ENABLED=false`, SMTP |
+| HubSpot uninstall event | subscribe the app to HubSpot's app-lifecycle "uninstall" event with target `https://api.<domain>/hubspot/webhooks` (**verify** the payload on a test portal; unrecognised events are logged). Without it, an uninstall is still noticed when the next token refresh fails. |
+| Data retention | `RETENTION_DAYS=30` (default): an uninstalled business is deleted from our database after 30 days; nothing is ever deleted in their HubSpot |
 | Listing | setup guide, Terms, Privacy Policy, support page, demo video, screenshots |
 
 **Verify on a HubSpot test account** (HubSpot's docs could not be fully confirmed while building):

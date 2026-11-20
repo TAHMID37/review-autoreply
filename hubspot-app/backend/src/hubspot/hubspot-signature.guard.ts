@@ -51,7 +51,7 @@ export class HubSpotSignatureGuard implements CanActivate {
       throw new UnauthorizedException("Invalid HubSpot signature");
     }
 
-    const portalId = firstParam(req.query.portalId) ?? "";
+    const portalId = lastParam(req.query.portalId) ?? "";
     const brand = portalId
       ? await this.prisma.brand.findUnique({ where: { hubspotPortalId: portalId }, select: { id: true, status: true } })
       : null;
@@ -62,17 +62,18 @@ export class HubSpotSignatureGuard implements CanActivate {
     req.hubspot = {
       brandId: brand.id,
       portalId,
-      hubspotUserId: firstParam(req.query.userId),
-      userEmail: firstParam(req.query.userEmail),
+      hubspotUserId: lastParam(req.query.userId),
+      userEmail: lastParam(req.query.userEmail),
     };
     return true;
   }
 }
 
-/** Our cards add portalId/userId/userEmail themselves, and HubSpot may append
- *  the same names too - Express then gives an array. Both values are signed. */
-function firstParam(value: unknown): string | null {
-  const v = Array.isArray(value) ? value[0] : value;
+/** Our cards add portalId/userId/userEmail themselves and HubSpot appends its own
+ *  after them, so Express can give an array. HubSpot's value is the LAST one, and
+ *  it is the one that is trustworthy, so it wins over anything the card sent. */
+function lastParam(value: unknown): string | null {
+  const v = Array.isArray(value) ? value[value.length - 1] : value;
   return typeof v === "string" && v ? v : null;
 }
 

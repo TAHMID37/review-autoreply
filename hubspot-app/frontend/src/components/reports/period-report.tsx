@@ -255,7 +255,7 @@ function PeriodChart({ report }: { report: PeriodReport }) {
                   width={barWidth}
                   height={height}
                   rx={MARK.barRadius}
-                  fill={isCurrent ? CHART.accent : isHover ? "#1C2A4A" : "#46506a"}
+                  fill={isCurrent ? CHART.accent : isHover ? "#125383" : "#46506a"}
                 />
               )}
               {bucket.total === 0 && (

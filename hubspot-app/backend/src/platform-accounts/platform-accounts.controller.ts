@@ -1,9 +1,10 @@
-import { BadRequestException, Controller, Delete, Get, Inject, Param, Post, Query, Res, UseGuards } from "@nestjs/common";
-import type { Response } from "express";
+import { BadRequestException, Controller, Delete, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { AuthUserDto } from "../auth/dto/auth-user.dto";
 import { AdminGuard } from "../auth/guards/admin.guard";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { clearNonce, nonceMatches, startNonce } from "../common/crypto/oauth-nonce";
 import { SignedStateService } from "../common/crypto/signed-state.service";
 import { Env } from "../config/env.schema";
 import { APP_ENV } from "../config/env.token";
@@ -30,21 +31,37 @@ export class PlatformAccountsController {
   /** The Google consent URL for the signed-in business. */
   @Get("google/connect")
   @UseGuards(JwtAuthGuard, AdminGuard)
-  connect(@CurrentUser() user: AuthUserDto, @Query("return") returnTo?: string): { authUrl: string } {
+  connect(
+    @CurrentUser() user: AuthUserDto,
+    @Res({ passthrough: true }) res: Response,
+    @Query("return") returnTo?: string,
+  ): { authUrl: string } {
     const page = returnTo && RETURN_PAGES.has(returnTo) ? returnTo : "settings";
-    return { authUrl: this.oauth.buildAuthUrl(this.state.sign(STATE_PURPOSE, { b: user.brandId, r: page })) };
+    const nonce = startNonce(res, this.env.NODE_ENV === "production");
+    return { authUrl: this.oauth.buildAuthUrl(this.state.sign(STATE_PURPOSE, { b: user.brandId, r: page, n: nonce })) };
   }
 
   /** Google's OAuth redirect. Public; the business is carried in signed state. */
   @Get("google/callback")
-  async callback(@Query("code") code: string, @Query("state") state: string, @Res() res: Response): Promise<void> {
+  async callback(
+    @Query("code") code: string,
+    @Query("state") state: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
     const web = this.env.WEB_APP_URL.replace(/\/$/, "");
     let page = "settings";
     try {
       if (!code || !state) {
         throw new BadRequestException("Missing code or state");
       }
-      const { b: brandId, r } = this.state.verify(STATE_PURPOSE, state);
+      const { b: brandId, r, n } = this.state.verify(STATE_PURPOSE, state);
+      // Only the browser that started the connection may finish it, so nobody
+      // can be tricked into attaching their Google account to someone else's business.
+      if (!nonceMatches(req, n)) {
+        throw new BadRequestException("This connection was not started in this browser. Please start again from Settings.");
+      }
+      clearNonce(res, this.env.NODE_ENV === "production");
       if (r && RETURN_PAGES.has(r)) page = r;
       const result = await this.accounts.connectFromCode(code, brandId);
       res.redirect(`${web}/${page}?connected=1&locations=${result.locationsFound}`);

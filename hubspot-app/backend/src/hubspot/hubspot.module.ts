@@ -10,6 +10,7 @@ import { HubSpotInstallService } from "./hubspot-install.service";
 import { HubSpotOAuthService } from "./hubspot-oauth.service";
 import { HubSpotSignatureGuard } from "./hubspot-signature.guard";
 import { HubSpotController } from "./hubspot.controller";
+import { HubSpotWebhooksController } from "./hubspot-webhooks.controller";
 
 /**
  * Everything HubSpot: install / sign-in (OAuth), the authorised API client,
@@ -17,7 +18,7 @@ import { HubSpotController } from "./hubspot.controller";
  */
 @Module({
   imports: [AuthModule, UsersModule, RepliesModule, BillingModule],
-  controllers: [HubSpotController, HubSpotExtensionController],
+  controllers: [HubSpotController, HubSpotExtensionController, HubSpotWebhooksController],
   providers: [HubSpotOAuthService, HubSpotApiClient, HubSpotCrmService, HubSpotInstallService, HubSpotSignatureGuard],
   exports: [HubSpotCrmService, HubSpotApiClient],
 })

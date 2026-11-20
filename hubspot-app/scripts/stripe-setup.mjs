@@ -40,7 +40,7 @@ async function stripe(path, body) {
   return json;
 }
 
-const product = await stripe("/products", { name: "ReviewPilot by iBuz (per location)" });
+const product = await stripe("/products", { name: "ReviewTune (per location)" });
 const price = await stripe("/prices", {
   product: product.id,
   unit_amount: Math.round(amount * 100),

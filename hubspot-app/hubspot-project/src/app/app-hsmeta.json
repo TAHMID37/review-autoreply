@@ -2,13 +2,13 @@
   "uid": "review_auto_reply_app",
   "type": "app",
   "config": {
-    "name": "ReviewPilot by iBuz",
+    "name": "ReviewTune",
     "description": "Pulls your Google reviews, replies automatically with your own templates, saves every review on the reviewer's HubSpot contact, and shows your reviews on your website.",
     "distribution": "marketplace",
     "auth": {
       "type": "oauth",
       "redirectUrls": [
-        "https://api.REPLACE-WITH-OUR-DOMAIN/hubspot/oauth/callback",
+        "https://reviewtune.ibusinessformula.com.au/api/hubspot/oauth/callback",
         "http://localhost:4020/hubspot/oauth/callback"
       ],
       "requiredScopes": [
@@ -22,7 +22,7 @@
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {
-      "fetch": ["https://api.REPLACE-WITH-OUR-DOMAIN"],
+      "fetch": ["https://reviewtune.ibusinessformula.com.au"],
       "iframe": [],
       "img": ["https://lh3.googleusercontent.com"]
     },

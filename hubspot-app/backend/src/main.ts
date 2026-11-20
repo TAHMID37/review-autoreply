@@ -3,6 +3,8 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { CorsOptions, CorsOptionsDelegate } from "@nestjs/common/interfaces/external/cors-options.interface";
 import type { Request } from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { AppModule } from "./app.module";
 import { Env, envSchema } from "./config/env.schema";
 import { loadEnv } from "./config/load-env";
@@ -15,6 +17,17 @@ async function bootstrap() {
   // rawBody: the Stripe and HubSpot signatures are computed over the exact
   // bytes received, so the unparsed body must be kept alongside the JSON.
   const app = await NestFactory.create(AppModule.forRoot(env), { rawBody: true });
+
+  // Behind nginx the real client address is in X-Forwarded-For; without this
+  // every visitor would share one rate-limit bucket.
+  if (env.NODE_ENV === "production") {
+    app.getHttpAdapter().getInstance().set("trust proxy", 1);
+  }
+
+  // Security headers. The API serves JSON and one script (embed.js), which other
+  // websites load cross-origin, so that response must stay embeddable.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(buildRateLimits());
 
   app.enableCors(buildCors(env));
   app.useGlobalPipes(
@@ -38,6 +51,30 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+const limiter = (windowMs: number, limit: number) =>
+  rateLimit({ windowMs, limit, standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Too many requests. Please slow down." } });
+
+/**
+ * Per-address request limits. Generous for normal use, tight where a script
+ * would hammer: sign-in code exchange, OAuth callbacks, and the public widget
+ * feed that any website visitor can reach. Stripe's webhook is exempt (it is
+ * signature-checked, and must never be throttled out of delivering events).
+ */
+function buildRateLimits() {
+  const general = limiter(60_000, 300);
+  const auth = limiter(60_000, 20);
+  const publicFeed = limiter(60_000, 120);
+  return (req: Request, res: any, next: any) => {
+    const path = req.path;
+    if (path === "/billing/webhook") return next();
+    if (path.startsWith("/auth/") || path.startsWith("/hubspot/oauth") || path.startsWith("/hubspot/install") || path.includes("/google/callback")) {
+      return auth(req, res, next);
+    }
+    if (path.startsWith("/public/") || path.startsWith("/widget/")) return publicFeed(req, res, next);
+    return general(req, res, next);
+  };
+}
 
 /**
  * The website widget's public feed is fetched from customers' own websites, so

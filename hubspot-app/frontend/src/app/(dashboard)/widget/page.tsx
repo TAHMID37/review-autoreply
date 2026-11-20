@@ -20,7 +20,7 @@ const DEFAULT_THEME: Required<WidgetTheme> = { accent: "#1a73e8", background: "#
 /** Ready-made colour sets, so a good look is one click. */
 const THEME_PRESETS: { name: string; theme: Required<WidgetTheme> }[] = [
   { name: "Light", theme: { accent: "#1a73e8", background: "#ffffff", text: "#202124", radius: 12 } },
-  { name: "Warm", theme: { accent: "#dd1157", background: "#fff7f9", text: "#3b1020", radius: 16 } },
+  { name: "Warm", theme: { accent: "#d1035a", background: "#fff7f9", text: "#3b1020", radius: 16 } },
   { name: "Dark", theme: { accent: "#8ab4f8", background: "#202124", text: "#e8eaed", radius: 12 } },
   { name: "Sharp", theme: { accent: "#188038", background: "#ffffff", text: "#202124", radius: 2 } },
 ];
@@ -465,7 +465,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 
 /** Tiny drawing of each layout, so the choice is visible before it is made. */
 function LayoutIcon({ layout, active }: { layout: WidgetLayout; active: boolean }) {
-  const fill = active ? "#DD1157" : "#9ca3af";
+  const fill = active ? "#D1035A" : "#9ca3af";
   const card = (x: number, y: number, w: number, h: number) => <rect key={`${x}-${y}`} x={x} y={y} width={w} height={h} rx={2} fill={fill} opacity={0.85} />;
   return (
     <svg viewBox="0 0 36 28" className="h-8 w-10 shrink-0" aria-hidden="true">

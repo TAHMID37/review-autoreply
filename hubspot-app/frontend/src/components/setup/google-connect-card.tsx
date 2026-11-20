@@ -48,7 +48,9 @@ export function GoogleConnectCard({ returnTo, onChange }: { returnTo: "setup" | 
     setError(null);
     setBusy("connect");
     try {
-      const { authUrl } = await apiFetch<{ authUrl: string }>(`/platform-accounts/google/connect?return=${returnTo}`);
+      const { authUrl } = await apiFetch<{ authUrl: string }>(`/platform-accounts/google/connect?return=${returnTo}`, {
+        credentials: "include",
+      });
       window.location.href = authUrl;
     } catch (err) {
       setError(errorText(err, "Could not start Google sign-in"));

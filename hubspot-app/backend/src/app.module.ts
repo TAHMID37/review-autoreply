@@ -15,6 +15,7 @@ import { ReplyConfigModule } from "./reply-config/reply-config.module";
 import { HubSpotModule } from "./hubspot/hubspot.module";
 import { BillingModule } from "./billing/billing.module";
 import { WidgetsModule } from "./widgets/widgets.module";
+import { RetentionModule } from "./retention/retention.module";
 
 @Module({})
 export class AppModule {
@@ -37,6 +38,7 @@ export class AppModule {
         HubSpotModule,
         BillingModule,
         WidgetsModule,
+        RetentionModule,
       ],
     };
   }

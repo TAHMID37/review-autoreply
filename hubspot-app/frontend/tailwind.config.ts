@@ -5,17 +5,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // iBusinessFormula brand
+        // ReviewTune brand
         brand: {
-          navy: "#1C2A4A", // primary dark - sidebar, headings, avatars
-          navyDark: "#141F38", // deeper step for gradients/hover
-          pink: "#DD1157", // magenta accent - primary actions, highlights
-          pinkDark: "#C10E4B", // hover step for magenta
+          navy: "#125383", // primary - sidebar, headings, avatars
+          navyDark: "#0D3F66", // deeper step for gradients/hover
+          pink: "#D1035A", // magenta accent - primary actions, highlights
+          pinkDark: "#A80249", // hover step for magenta
         },
-        ink: "#1C2A4A",
-        muted: "#5B6473",
+        ink: "#125383",
+        muted: "#4A5A6A", // brand slate
         line: "#E4E7EC",
-        surface: "#F6F7F9",
+        surface: "#EEF2F6", // brand mist
       },
       fontFamily: {
         sans: ["var(--font-raleway)", "ui-sans-serif", "system-ui", "sans-serif"],

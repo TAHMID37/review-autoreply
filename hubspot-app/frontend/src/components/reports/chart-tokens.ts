@@ -10,9 +10,9 @@
  * identity slot, so the chroma floor does not apply to it.
  */
 export const CHART = {
-  accent: "#DD1157", // brand magenta accent
+  accent: "#D1035A", // brand magenta accent
   /** Light step of the accent hue - the meter's same-ramp track. */
-  accentTrack: "#F8CEDC",
+  accentTrack: "#F6C9DC",
   deemphasis: "#6b7280",
   gridline: "#e5e7eb",
   textPrimary: "#111827",

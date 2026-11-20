@@ -1,4 +1,4 @@
-# ReviewPilot by iBuz: HubSpot App Plan
+# ReviewTune: HubSpot App Plan
 
 As of 9 Oct 2026, updated 16 Oct 2026 (reviews saved under HubSpot contacts) and 9 Nov 2026 (review data stored as contact properties, Option A, plus in-app reports and a rating goal calculator). Shared doc: https://claude.ai/code/artifact/74ba3162-dc51-4ccf-afd1-0190c9df82e3
 
@@ -37,6 +37,7 @@ A business installs the app, gives access to its Google reviews, picks its locat
 - **Negative reviews:** 1–2★ reviews with a comment are always held for a person to approve.
 - **HubSpot data:** we only add reviews and contacts, and never change or delete a contact the business already had. Contacts we create are labelled so they are easy to find.
 - **Removing access:** a business can do this at any time, by uninstalling in HubSpot or removing access in its Google account.
+- **After uninstalling:** syncing stops, billing is cancelled and our stored HubSpot and Google access is erased straight away. Thirty days later we delete the business's reviews, reviewer names and settings from our database (reinstalling within the 30 days cancels the deletion; deleting on request is immediate). We never delete anything in the business's own HubSpot: the notes, contacts and properties we added stay there, because they are the business's records.
 
 ## Features
 

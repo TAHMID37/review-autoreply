@@ -32,7 +32,9 @@ export class BrandsController {
     return this.brandsService.findById(user.brandId, id);
   }
 
+  /** Admins only: alert emails and the business name affect everyone. */
   @Patch(":id")
+  @UseGuards(AdminGuard)
   update(@CurrentUser() user: AuthUserDto, @Param("id") id: string, @Body() dto: UpdateBrandDto) {
     return this.brandsService.update(user.brandId, id, dto);
   }

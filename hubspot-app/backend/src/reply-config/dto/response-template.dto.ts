@@ -1,12 +1,14 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class CreateResponseTemplateDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(120)
   name!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(4000)
   body!: string;
 
   @IsOptional()
@@ -22,11 +24,13 @@ export class UpdateResponseTemplateDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(120)
   name?: string;
 
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(4000)
   body?: string;
 
   @IsOptional()

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ReplyStatus } from "@prisma/client";
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { Env } from "../config/env.schema";
 import { APP_ENV } from "../config/env.token";
@@ -12,6 +12,7 @@ class CardApproveDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @MaxLength(4000)
   finalReply?: string;
 }
 

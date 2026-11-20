@@ -16,6 +16,7 @@ export default function LoginPage() {
   const { user, isLoading, signInWithHubSpot, devSignIn } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [justInstalled, setJustInstalled] = useState(false);
   const [next, setNext] = useState<string | undefined>(undefined);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
@@ -24,6 +25,7 @@ export default function LoginPage() {
     const requested = params.get("next");
     if (isSafePath(requested)) setNext(requested);
     if (params.get("error")) setError(params.get("error"));
+    if (params.get("installed")) setJustInstalled(true);
   }, []);
 
   useEffect(() => {
@@ -67,6 +69,9 @@ export default function LoginPage() {
           {isRedirecting ? "Opening HubSpot…" : "Sign in with HubSpot"}
         </button>
 
+        {justInstalled && !error && (
+          <p className="mt-4 text-sm text-green-700">The app is installed. Sign in with HubSpot to finish setting up.</p>
+        )}
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
         <p className="mt-6 text-xs leading-relaxed text-muted">

@@ -30,7 +30,7 @@ export const envSchema = z.object({
 
   // Dashboard session (issued after "Sign in with HubSpot")
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  JWT_EXPIRES_IN: z.string().default("12h"),
+  JWT_EXPIRES_IN: z.string().default("4h"),
 
   // Encrypts stored Google + HubSpot OAuth tokens (AES-256-GCM key)
   TOKEN_ENCRYPTION_KEY: z
@@ -92,6 +92,16 @@ export const envSchema = z.object({
   /** Comma-separated fallback alert addresses, used only for a business that
    *  has not set its own alert emails in Settings. Usually left blank. */
   ALERT_EMAIL_TO: z.string().optional(),
+
+  // Data retention: a business that uninstalls the app has its reviews and
+  // reviewer names deleted from OUR database this many days later. Nothing is
+  // ever deleted from the business's own HubSpot account. Reinstalling inside
+  // the window cancels the deletion.
+  RETENTION_ENABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() !== "false" : v),
+    z.boolean().default(true),
+  ),
+  RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
 
   // Monitoring (build phase 12)
   SENTRY_DSN: z.string().optional(),

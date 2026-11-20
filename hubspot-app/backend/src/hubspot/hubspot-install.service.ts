@@ -11,7 +11,8 @@ import { HubSpotCrmService } from "./hubspot-crm.service";
 import { HubSpotOAuthService } from "./hubspot-oauth.service";
 
 export interface InstallResult {
-  loginCode: string;
+  /** Only set when the caller may sign the person in (the flow carried our state). */
+  loginCode?: string;
   isNewBusiness: boolean;
 }
 
@@ -36,7 +37,7 @@ export class HubSpotInstallService {
     private readonly billing: BillingService,
   ) {}
 
-  async completeOAuth(code: string): Promise<InstallResult> {
+  async completeOAuth(code: string, issueLogin = true): Promise<InstallResult> {
     const tokens = await this.oauth.exchangeCode(code);
     const info = await this.oauth.getTokenInfo(tokens.accessToken);
 
@@ -93,7 +94,19 @@ export class HubSpotInstallService {
     if (!existing) {
       this.logger.log(`New business installed the app: ${brand.name} (portal ${info.portalId}).`);
     }
-    return { loginCode: await this.auth.createLoginCode(user.id), isNewBusiness: !existing };
+    return { loginCode: issueLogin ? await this.auth.createLoginCode(user.id) : undefined, isNewBusiness: !existing };
+  }
+
+  /**
+   * HubSpot told us the app was removed from an account. Stops syncing, erases
+   * credentials and cancels billing; the retention job deletes the business's
+   * data from our database after RETENTION_DAYS. Nothing is touched in HubSpot.
+   */
+  async handleUninstalledByHubSpot(portalId: string): Promise<boolean> {
+    const brand = await this.prisma.brand.findUnique({ where: { hubspotPortalId: portalId }, select: { id: true, status: true } });
+    if (!brand || brand.status !== BrandStatus.ACTIVE) return false;
+    await this.api.markUninstalled(brand.id, "HubSpot reported the app was uninstalled");
+    return true;
   }
 
   /**

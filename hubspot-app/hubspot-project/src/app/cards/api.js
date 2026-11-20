@@ -4,7 +4,7 @@ import { hubspot } from "@hubspot/ui-extensions";
  * Our API. Must also be listed under permittedUrls.fetch in app-hsmeta.json.
  * Change both when the production domain is decided.
  */
-export const API_BASE = "https://api.REPLACE-WITH-OUR-DOMAIN";
+export const API_BASE = "https://reviewtune.ibusinessformula.com.au/api";
 
 /**
  * Calls our API through hubspot.fetch, which signs the request with our

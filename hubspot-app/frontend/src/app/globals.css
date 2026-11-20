@@ -9,5 +9,5 @@ body {
 
 /* Brand focus ring default for form controls */
 ::selection {
-  background: rgba(221, 17, 87, 0.15);
+  background: rgba(209, 3, 90, 0.15);
 }

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Env } from "../config/env.schema";
 import { APP_ENV } from "../config/env.token";
@@ -48,7 +48,7 @@ export class StripeClient {
   constructEvent(rawBody: Buffer, signatureHeader: string | undefined): StripeEvent {
     if (!this.env.STRIPE_WEBHOOK_SECRET) throw new StripeNotConfiguredError();
     if (!verifyStripeSignature(rawBody.toString("utf8"), signatureHeader, this.env.STRIPE_WEBHOOK_SECRET)) {
-      throw new Error("Stripe webhook signature check failed");
+      throw new BadRequestException("Stripe webhook signature check failed");
     }
     return JSON.parse(rawBody.toString("utf8")) as StripeEvent;
   }

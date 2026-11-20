@@ -1,7 +1,13 @@
+import { APP_BRAND } from "@/lib/app-brand";
+
+const BUBBLE = "M 350.160156 199.980469 L 549.839844 199.980469 C 585.679688 199.980469 603.601562 217.898438 603.601562 253.738281 L 603.601562 338.21875 C 603.601562 374.058594 585.679688 391.980469 549.839844 391.980469 L 403.921875 391.980469 L 342.480469 445.738281 L 342.480469 391.980469 C 311.761719 391.980469 296.398438 374.058594 296.398438 338.21875 L 296.398438 253.738281 C 296.398438 217.898438 314.320312 199.980469 350.160156 199.980469 Z M 350.160156 199.980469";
+const STARS = "M 350.160156 273.707031 L 355.921875 288.300781 L 371.28125 289.066406 L 359.375 299.050781 L 363.214844 314.027344 L 350.160156 305.578125 L 337.105469 314.027344 L 340.945312 299.050781 L 329.039062 289.066406 L 344.398438 288.300781 Z M 350.160156 273.707031 M 400.078125 273.707031 L 405.839844 288.300781 L 421.199219 289.066406 L 409.296875 299.050781 L 413.136719 314.027344 L 400.078125 305.578125 L 387.023438 314.027344 L 390.863281 299.050781 L 378.960938 289.066406 L 394.320312 288.300781 Z M 400.078125 273.707031 M 450 273.707031 L 455.761719 288.300781 L 471.121094 289.066406 L 459.214844 299.050781 L 463.054688 314.027344 L 450 305.578125 L 436.945312 314.027344 L 440.785156 299.050781 L 428.878906 289.066406 L 444.238281 288.300781 Z M 450 273.707031 M 499.921875 273.707031 L 505.679688 288.300781 L 521.039062 289.066406 L 509.136719 299.050781 L 512.976562 314.027344 L 499.921875 305.578125 L 486.863281 314.027344 L 490.703125 299.050781 L 478.800781 289.066406 L 494.160156 288.300781 Z M 499.921875 273.707031 M 549.839844 273.707031 L 555.601562 288.300781 L 570.960938 289.066406 L 559.054688 299.050781 L 562.894531 314.027344 L 549.839844 305.578125 L 536.785156 314.027344 L 540.625 299.050781 L 528.71875 289.066406 L 544.078125 288.300781 Z M 549.839844 273.707031";
+
 /**
- * Product lockup for the ReviewPilot by iBuz dashboard: a magenta tile with a
- * reply glyph next to the wordmark. `tone` flips the wordmark colour for dark
- * (sidebar, login panel) vs light backgrounds.
+ * ReviewTune logo: speech-bubble mark with five stars, plus the wordmark
+ * ("Review" navy, "Tune" magenta). `tone` is the background it sits on: "dark"
+ * (sidebar) gives the all-white wordmark, "light" (login card) the two-colour
+ * one. Stars are always magenta, per the brand set.
  */
 export function BrandMark({
   tone = "dark",
@@ -10,31 +16,26 @@ export function BrandMark({
   tone?: "dark" | "light";
   size?: "sm" | "md";
 }) {
-  const tile = size === "sm" ? "h-7 w-7" : "h-9 w-9";
-  const word = size === "sm" ? "text-sm" : "text-lg";
-  const glyph = size === "sm" ? 15 : 19;
-  const wordColor = tone === "dark" ? "text-white" : "text-brand-navy";
+  const markHeight = size === "sm" ? 22 : 30;
+  const word = size === "sm" ? "text-base" : "text-xl";
+  const onDark = tone === "dark";
 
   return (
     <div className="flex items-center gap-2.5">
-      <span
-        className={`relative flex ${tile} flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-pink to-brand-pinkDark shadow-sm`}
+      <svg
+        height={markHeight}
+        viewBox="280 184 340 280"
+        className="flex-shrink-0"
+        style={{ width: (markHeight * 340) / 280 }}
         aria-hidden
       >
-        <svg
-          width={glyph}
-          height={glyph}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="white"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-        </svg>
+        <path d={BUBBLE} fill="none" stroke={onDark ? "#ffffff" : "#125383"} strokeWidth="23.04" strokeLinejoin="round" />
+        <path d={STARS} fill="#D1035A" stroke="#D1035A" strokeWidth="5.76" strokeLinejoin="round" />
+      </svg>
+      <span className={`${word} font-extrabold tracking-tight`} aria-label={APP_BRAND.displayName}>
+        <span className={onDark ? "text-white" : "text-brand-navy"}>Review</span>
+        <span className={onDark ? "text-white" : "text-brand-pink"}>Tune</span>
       </span>
-      <span className={`${word} font-extrabold tracking-tight ${wordColor}`}>ReviewPilot by iBuz</span>
     </div>
   );
 }
