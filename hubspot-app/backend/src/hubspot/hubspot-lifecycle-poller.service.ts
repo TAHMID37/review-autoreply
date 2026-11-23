@@ -12,6 +12,11 @@ const MAX_PAGES = 20;
 /** Renew the app-level token a little before HubSpot's 30 minutes are up. */
 const TOKEN_REUSE_MS = 25 * 60 * 1000;
 
+interface JournalPointer {
+  url?: string;
+  currentOffset?: string;
+}
+
 /**
  * HubSpot does not push uninstall events; they are written to a journal the app
  * reads. This polls that journal and runs the normal uninstall cleanup (Google
@@ -73,13 +78,23 @@ export class HubSpotLifecyclePollerService implements OnModuleInit, OnModuleDest
   private async readJournal(): Promise<void> {
     let path = `/webhooks-journal/journal/2026-09/batch/earliest/${PAGE_SIZE}`;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const batch = await this.call<unknown>("GET", path);
-      const { events, lastOffset } = extractUninstalls(batch);
-      for (const event of events) await this.handle(event);
-      const count = Array.isArray((batch as { results?: unknown[] } | null)?.results) ? (batch as { results: unknown[] }).results.length : 0;
-      if (!lastOffset || count < PAGE_SIZE) return;
+      const batch = await this.call<{ results?: JournalPointer[] }>("GET", path);
+      const pointers = batch.results ?? [];
+      // Each entry is a short-lived link to a file holding the events.
+      const files: unknown[] = [];
+      for (const pointer of pointers) files.push(pointer.url ? await this.download(pointer.url) : pointer);
+      for (const event of extractUninstalls({ results: files }).events) await this.handle(event);
+      const lastOffset = pointers[pointers.length - 1]?.currentOffset;
+      if (!lastOffset || pointers.length < PAGE_SIZE) return;
       path = `/webhooks-journal/journal/2026-09/batch/${lastOffset}/next/${PAGE_SIZE}`;
     }
+  }
+
+  /** The link is pre-signed, so it must be fetched without our Authorization header. */
+  private async download(url: string): Promise<unknown> {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HubSpot journal file -> ${response.status}`);
+    return response.json();
   }
 
   private async handle(event: { offset: string | null; portalId: string; occurredAt: Date | null }): Promise<void> {

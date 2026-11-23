@@ -1,6 +1,31 @@
 import { extractUninstalls } from "./lifecycle-events";
 
 describe("extractUninstalls", () => {
+  it("reads the file HubSpot really sent for an uninstall", () => {
+    const { events } = extractUninstalls({
+      results: [
+        {
+          offset: "01a20777-4c59-7a28-9d8c-d74699862a2a",
+          journalEvents: [
+            {
+              type: "appLifecycleEvent",
+              portalId: 50261975,
+              occurredAt: "2026-11-23T08:13:02.968Z",
+              appId: 59758472,
+              eventTypeId: "4-1916193",
+              action: "APP_UNINSTALL",
+              properties: { hs_app_id: "59758472" },
+            },
+          ],
+          publishedAt: "2026-11-23T08:13:08.569Z",
+        },
+      ],
+    });
+    expect(events).toEqual([
+      { offset: "01a20777-4c59-7a28-9d8c-d74699862a2a", portalId: "50261975", occurredAt: new Date("2026-11-23T08:13:02.968Z") },
+    ]);
+  });
+
   it("reads uninstall events nested in a journal entry", () => {
     const { events, lastOffset } = extractUninstalls({
       results: [
