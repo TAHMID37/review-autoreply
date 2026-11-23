@@ -19,13 +19,13 @@ export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get("stats")
-  getStats(@CurrentUser() user: AuthUserDto) {
-    return this.reports.getStats(user.brandId);
+  getStats(@CurrentUser() user: AuthUserDto, @Query("locationId") locationId?: string) {
+    return this.reports.getStats(user.brandId, locationId || undefined);
   }
 
   @Get("weekly-volume")
-  getWeeklyVolume(@CurrentUser() user: AuthUserDto) {
-    return this.reports.getWeeklyVolume(user.brandId);
+  getWeeklyVolume(@CurrentUser() user: AuthUserDto, @Query("locationId") locationId?: string) {
+    return this.reports.getWeeklyVolume(user.brandId, locationId || undefined);
   }
 
   /** Weekly, monthly or yearly report: ?period=week|month|year&locationId= */

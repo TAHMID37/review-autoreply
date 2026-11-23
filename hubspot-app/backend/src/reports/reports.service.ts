@@ -46,8 +46,12 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** The four stat tiles at the top of the dashboard. */
-  async getStats(brandId: string): Promise<ReviewStats> {
-    const where: Prisma.ReviewWhereInput = { location: { brandId }, removedAt: null };
+  async getStats(brandId: string, locationId?: string): Promise<ReviewStats> {
+    if (locationId) await this.assertLocation(brandId, locationId);
+    const where: Prisma.ReviewWhereInput = {
+      location: { brandId, ...REACHABLE_LOCATION, ...(locationId ? { id: locationId } : {}) },
+      removedAt: null,
+    };
     const monthStart = startOfCurrentMonth();
 
     // Response rate is measured only against the reviews this system is actually
@@ -94,7 +98,7 @@ export class ReportsService {
     const rows = await this.prisma.review.findMany({
       where: {
         removedAt: null,
-        location: { brandId, ...(locationId ? { id: locationId } : {}) },
+        location: { brandId, ...REACHABLE_LOCATION, ...(locationId ? { id: locationId } : {}) },
         reviewedAt: { gte: reportWindowStart(now, period) },
       },
       select: { rating: true, reviewedAt: true, locationId: true, reply: { select: { status: true } }, location: { select: { name: true } } },
@@ -186,8 +190,12 @@ export class ReportsService {
   }
 
   /** Reviews per week for the last 4 weeks — the bar chart on the report. */
-  async getWeeklyVolume(brandId: string): Promise<WeeklyVolume[]> {
-    const where: Prisma.ReviewWhereInput = { location: { brandId }, removedAt: null };
+  async getWeeklyVolume(brandId: string, locationId?: string): Promise<WeeklyVolume[]> {
+    if (locationId) await this.assertLocation(brandId, locationId);
+    const where: Prisma.ReviewWhereInput = {
+      location: { brandId, ...REACHABLE_LOCATION, ...(locationId ? { id: locationId } : {}) },
+      removedAt: null,
+    };
     const weeks: WeeklyVolume[] = [];
 
     for (let weeksAgo = 3; weeksAgo >= 0; weeksAgo--) {

@@ -6,6 +6,8 @@ import { StatTile } from "@/components/reviews/stat-tile";
 import { responseScopeLabel } from "@/lib/response-scope";
 import { Pagination } from "@/components/ui/pagination";
 import { apiFetch } from "@/lib/api-client";
+import { LocationFilter } from "@/components/ui/location-filter";
+import { useLocationFilter } from "@/lib/use-location-filter";
 import { DATE_RANGE_LABEL, DATE_RANGES, type DateRange } from "@/lib/date-range";
 import type { ReviewPage, ReviewStats } from "@/types/api";
 
@@ -38,6 +40,7 @@ export default function ReviewsPage() {
   const [dateRange, setDateRange] = useState<DateRange>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const { locations, locationId, setLocationId, ready } = useLocationFilter();
 
   // Wait for a pause in typing before asking the server to search.
   useEffect(() => {
@@ -49,12 +52,13 @@ export default function ReviewsPage() {
     setError(null);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), tab });
     if (search) params.set("search", search);
+    if (locationId) params.set("locationId", locationId);
     const since = sinceFor(dateRange);
     if (since) params.set("since", since);
     try {
       const [loaded, loadedStats] = await Promise.all([
         apiFetch<ReviewPage>(`/reviews/page?${params.toString()}`),
-        apiFetch<ReviewStats>("/reports/stats"),
+        apiFetch<ReviewStats>(`/reports/stats${locationId ? `?locationId=${encodeURIComponent(locationId)}` : ""}`),
       ]);
       setData(loaded);
       setStats(loadedStats);
@@ -63,17 +67,17 @@ export default function ReviewsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, pageSize, tab, search, dateRange]);
+  }, [page, pageSize, tab, search, dateRange, locationId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (ready) void load();
+  }, [load, ready]);
 
   // A new filter or page size starts again from page 1 with nothing ticked.
   useEffect(() => {
     setPage(1);
     setSelected(new Set());
-  }, [tab, search, pageSize, dateRange]);
+  }, [tab, search, pageSize, dateRange, locationId]);
 
   // Ticks only make sense for the page on screen.
   useEffect(() => {
@@ -137,10 +141,13 @@ export default function ReviewsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold text-ink">Google Reviews</h1>
+        <div className="ml-auto">
+          <LocationFilter locations={locations} value={locationId} onChange={setLocationId} />
+        </div>
         <select
           value={dateRange}
           onChange={(event) => setDateRange(event.target.value as DateRange)}
-          className="ml-auto rounded-md border border-gray-300 px-2 py-1.5 text-sm text-ink focus:border-brand-pink focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-ink focus:border-brand-pink focus:outline-none"
         >
           {DATE_RANGES.map((r) => (
             <option key={r} value={r}>
@@ -174,7 +181,7 @@ export default function ReviewsPage() {
 
       {stats && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile value={`${stats.averageRating} ★`} label="Average rating" />
+          <StatTile value={stats.totalReviews > 0 ? `${stats.averageRating} ★` : "–"} label="Average rating" />
           <StatTile value={String(stats.reviewsThisMonth)} label="Reviews this month" />
           <StatTile
             value={`${stats.responseRate}%`}

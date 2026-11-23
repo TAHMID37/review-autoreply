@@ -5,6 +5,8 @@ import { PeriodReportSection } from "@/components/reports/period-report";
 import { RatingGoalCard } from "@/components/reports/rating-goal-card";
 import { ResponseRateMeter } from "@/components/reports/response-rate-meter";
 import { WeeklyVolumeChart } from "@/components/reports/weekly-volume-chart";
+import { LocationFilter } from "@/components/ui/location-filter";
+import { useLocationFilter } from "@/lib/use-location-filter";
 import { StatTile } from "@/components/reviews/stat-tile";
 import { responseScopeLabel } from "@/lib/response-scope";
 import { apiFetch } from "@/lib/api-client";
@@ -12,13 +14,14 @@ import type { Brand, ReviewStats, WeeklyVolume } from "@/types/api";
 
 export default function ReportsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const { locations, locationId, setLocationId, ready } = useLocationFilter();
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [weekly, setWeekly] = useState<WeeklyVolume[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const query = selectedBrandId ? `?brandId=${selectedBrandId}` : "";
+    setError(null);
+    const query = locationId ? `?locationId=${encodeURIComponent(locationId)}` : "";
     try {
       const [loadedStats, loadedWeekly] = await Promise.all([
         apiFetch<ReviewStats>(`/reports/stats${query}`),
@@ -29,15 +32,15 @@ export default function ReportsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the report");
     }
-  }, [selectedBrandId]);
+  }, [locationId]);
 
   useEffect(() => {
     apiFetch<Brand[]>("/brands").then(setBrands).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (ready) void load();
+  }, [load, ready]);
 
   // Both figures come from the same in-scope set the response rate is measured
   // against, so the meter's two numbers always add up to its denominator. The
@@ -52,29 +55,12 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-xl font-bold text-ink">Reports</h1>
           <p className="text-sm text-gray-500">
-            {brands.length === 1
-              ? brands[0].name
-              : selectedBrandId
-                ? brands.find((b) => b.id === selectedBrandId)?.name
-                : "All brands"}{" "}
-            · all campuses
+            {brands[0]?.name} · {locationId ? (locations.find((l) => l.id === locationId)?.name ?? "one location") : "all locations"}
           </p>
         </div>
-        {/* Single-brand deployment: a brand picker with one option is just noise. */}
-        {brands.length > 1 && (
-          <select
-            value={selectedBrandId ?? ""}
-            onChange={(event) => setSelectedBrandId(event.target.value || null)}
-            className="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-pink focus:outline-none"
-          >
-            <option value="">All brands</option>
-            {brands.map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </select>
-        )}
+        <div className="ml-auto">
+          <LocationFilter locations={locations} value={locationId} onChange={setLocationId} />
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -82,7 +68,7 @@ export default function ReportsPage() {
       {stats && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile value={String(stats.reviewsThisMonth)} label="Reviews this month" />
-          <StatTile value={`${stats.averageRating} ★`} label="Average rating" />
+          <StatTile value={stats.totalReviews > 0 ? `${stats.averageRating} ★` : "–"} label="Average rating" />
           <StatTile
             value={`${stats.responseRate}%`}
             label="Response rate"
@@ -93,9 +79,9 @@ export default function ReportsPage() {
         </div>
       )}
 
-      <PeriodReportSection />
+      <PeriodReportSection locationId={locationId} />
 
-      <RatingGoalCard />
+      <RatingGoalCard locationId={locationId} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-line bg-white p-4 shadow-card">

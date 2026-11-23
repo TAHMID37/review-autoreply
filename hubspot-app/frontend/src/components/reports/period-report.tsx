@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, downloadFile } from "@/lib/api-client";
-import type { Location, PeriodReport, ReportBucket, ReportPeriod } from "@/types/api";
+import type { PeriodReport, ReportBucket, ReportPeriod } from "@/types/api";
 import { CHART, MARK } from "./chart-tokens";
 
 const PERIODS: { value: ReportPeriod; label: string; noun: string; previous: string }[] = [
@@ -19,20 +19,12 @@ const HEIGHT = 200;
 const PADDING = { top: 26, right: 12, bottom: 38, left: 32 };
 
 /** Weekly, monthly or yearly view of the Google reviews, with a CSV download. */
-export function PeriodReportSection() {
+export function PeriodReportSection({ locationId }: { locationId: string }) {
   const [period, setPeriod] = useState<ReportPeriod>("month");
-  const [locationId, setLocationId] = useState("");
   const [hideEmpty, setHideEmpty] = useState(true);
-  const [locations, setLocations] = useState<Location[]>([]);
   const [report, setReport] = useState<PeriodReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-
-  useEffect(() => {
-    apiFetch<Location[]>("/locations")
-      .then((all) => setLocations(all.filter((l) => l.syncEnabled)))
-      .catch(() => undefined);
-  }, []);
 
   const query = `period=${period}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ""}`;
 
@@ -86,21 +78,6 @@ export function PeriodReportSection() {
             </button>
           ))}
         </div>
-        {locations.length > 1 && (
-          <select
-            value={locationId}
-            onChange={(e) => setLocationId(e.target.value)}
-            aria-label="Location"
-            className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm text-ink"
-          >
-            <option value="">All locations</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        )}
         <button
           onClick={download}
           disabled={downloading}

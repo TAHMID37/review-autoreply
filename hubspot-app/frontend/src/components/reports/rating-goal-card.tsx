@@ -1,24 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
-import type { Location, RatingGoalReport } from "@/types/api";
+import type { RatingGoalReport } from "@/types/api";
 
 /** "How many more 5-star reviews do we need to reach 4.5?" */
-export function RatingGoalCard() {
+export function RatingGoalCard({ locationId }: { locationId: string }) {
   const [target, setTarget] = useState("4.5");
-  const [locationId, setLocationId] = useState("");
   const [rounded, setRounded] = useState(true);
-  const [locations, setLocations] = useState<Location[]>([]);
   const [result, setResult] = useState<RatingGoalReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    apiFetch<Location[]>("/locations")
-      .then((all) => setLocations(all.filter((l) => l.syncEnabled)))
-      .catch(() => undefined);
-  }, []);
 
   async function calculate(event: FormEvent) {
     event.preventDefault();
@@ -55,23 +47,6 @@ export function RatingGoalCard() {
             className="w-24 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
           />
         </label>
-        {locations.length > 1 && (
-          <label className="text-sm text-gray-700">
-            <span className="mb-1 block text-xs text-gray-500">Location</span>
-            <select
-              value={locationId}
-              onChange={(e) => setLocationId(e.target.value)}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-            >
-              <option value="">All locations</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <label className="flex items-center gap-2 pb-2 text-xs text-gray-600">
           <input type="checkbox" checked={rounded} onChange={(e) => setRounded(e.target.checked)} />
           Count it as reached when Google shows it (rounded)
