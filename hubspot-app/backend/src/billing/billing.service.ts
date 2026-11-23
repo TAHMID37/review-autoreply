@@ -53,11 +53,13 @@ export class BillingService {
   }
 
   /** Whether syncing and auto-replies should run for this business right now. */
-  isServiceActive(subscription: Pick<Subscription, "status" | "pastDueSince"> | null): boolean {
+  isServiceActive(subscription: Pick<Subscription, "status" | "pastDueSince" | "stripeSubscriptionId" | "trialEndsAt"> | null): boolean {
     if (!this.enforced) return true;
     if (!subscription) return false;
-    if (subscription.status === SubscriptionStatus.ACTIVE || subscription.status === SubscriptionStatus.TRIALING) {
-      return true;
+    if (subscription.status === SubscriptionStatus.ACTIVE) return true;
+    if (subscription.status === SubscriptionStatus.TRIALING) {
+      // A trial with no Stripe subscription behind it (no card yet) lasts until its end date.
+      return subscription.stripeSubscriptionId != null || (subscription.trialEndsAt?.getTime() ?? 0) > Date.now();
     }
     if (subscription.status === SubscriptionStatus.PAST_DUE || subscription.status === SubscriptionStatus.UNPAID) {
       const since = subscription.pastDueSince?.getTime() ?? Date.now();
@@ -73,11 +75,32 @@ export class BillingService {
     return {
       subscription: {
         OR: [
-          { status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
+          { status: SubscriptionStatus.ACTIVE },
+          { status: SubscriptionStatus.TRIALING, stripeSubscriptionId: { not: null } },
+          { status: SubscriptionStatus.TRIALING, trialEndsAt: { gt: new Date() } },
           { status: { in: [SubscriptionStatus.PAST_DUE, SubscriptionStatus.UNPAID] }, pastDueSince: { gt: graceStart } },
         ],
       },
     };
+  }
+
+  /**
+   * Starts the free trial for a business that has never had one, with no card
+   * and no Stripe involved. Safe to call on every sign-in: it only acts when the
+   * business has no subscription record at all.
+   */
+  async startTrial(brandId: string): Promise<void> {
+    if (this.env.STRIPE_TRIAL_DAYS <= 0) return;
+    const existing = await this.prisma.subscription.findUnique({ where: { brandId } });
+    if (existing) return;
+    await this.prisma.subscription.create({
+      data: {
+        brandId,
+        status: SubscriptionStatus.TRIALING,
+        trialEndsAt: new Date(Date.now() + this.env.STRIPE_TRIAL_DAYS * DAY_MS),
+      },
+    });
+    this.logger.log(`Started a ${this.env.STRIPE_TRIAL_DAYS}-day free trial for ${brandId}.`);
   }
 
   /** The per-location price set in Stripe, for display. Cached; null if unavailable. */
@@ -112,6 +135,9 @@ export class BillingService {
       price,
       enforced: this.enforced,
       configured: this.stripe.configured,
+      checkoutEnabled: this.env.BILLING_CHECKOUT_ENABLED,
+      /** On a free trial with no card added yet. */
+      appTrial: subscription?.status === SubscriptionStatus.TRIALING && !subscription.stripeSubscriptionId,
       status: subscription?.status ?? SubscriptionStatus.NONE,
       quantity: subscription?.quantity ?? 0,
       syncedLocations,
@@ -127,8 +153,11 @@ export class BillingService {
 
   /** Starts Stripe Checkout for a new subscription; returns the URL to open. */
   async createCheckout(brandId: string, email: string): Promise<{ url: string }> {
+    if (!this.env.BILLING_CHECKOUT_ENABLED) {
+      throw new BadRequestException("Adding a payment method is not open yet. Your free trial keeps running without one.");
+    }
     const existing = await this.prisma.subscription.findUnique({ where: { brandId } });
-    if (existing && (existing.status === SubscriptionStatus.ACTIVE || existing.status === SubscriptionStatus.TRIALING)) {
+    if (existing?.stripeSubscriptionId && (existing.status === SubscriptionStatus.ACTIVE || existing.status === SubscriptionStatus.TRIALING)) {
       throw new BadRequestException("This business already has a subscription. Use Manage billing to change it.");
     }
     const quantity = await this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } });
@@ -137,15 +166,23 @@ export class BillingService {
     }
     const customerId = await this.ensureCustomer(brandId, email);
     const web = this.env.WEB_APP_URL.replace(/\/$/, "");
-    // A trial only for a business that has never subscribed before.
-    const trial = this.env.STRIPE_TRIAL_DAYS > 0 && !existing?.stripeSubscriptionId ? this.env.STRIPE_TRIAL_DAYS : undefined;
+    // The card is added with the free trial already running: Stripe starts charging when
+    // that trial ends, not 90 days later. Stripe needs the end at least 2 days away.
+    const MIN_TRIAL_END_MS = 49 * 60 * 60 * 1000;
+    const runningTrialEnd = existing && !existing.stripeSubscriptionId ? existing.trialEndsAt : null;
+    const trialEnd = runningTrialEnd && runningTrialEnd.getTime() > Date.now() ? Math.max(runningTrialEnd.getTime(), Date.now() + MIN_TRIAL_END_MS) : null;
+    // Otherwise a fresh trial, only for a business that has never subscribed before.
+    const trialDays = !trialEnd && this.env.STRIPE_TRIAL_DAYS > 0 && !existing?.stripeSubscriptionId ? this.env.STRIPE_TRIAL_DAYS : undefined;
 
     const session = await this.stripe.request<{ url: string }>("POST", "/checkout/sessions", {
       mode: "subscription",
       customer: customerId,
       client_reference_id: brandId,
       line_items: [{ price: this.env.STRIPE_PRICE_ID, quantity }],
-      subscription_data: { metadata: { brandId }, trial_period_days: trial },
+      subscription_data: {
+        metadata: { brandId },
+        ...(trialEnd ? { trial_end: Math.floor(trialEnd / 1000) } : { trial_period_days: trialDays }),
+      },
       allow_promotion_codes: true,
       success_url: `${web}/billing?checkout=success`,
       cancel_url: `${web}/billing?checkout=cancelled`,

@@ -59,7 +59,13 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
       }
       action={
         billing.enforced &&
-        (hasPlan ? (
+        (billing.appTrial ? (
+          billing.checkoutEnabled && (
+            <button onClick={() => open("/billing/checkout")} disabled={!isAdmin || busy || billing.syncedLocations === 0} className={PRIMARY_BUTTON}>
+              {busy ? "Opening…" : "Add payment method"}
+            </button>
+          )
+        ) : hasPlan ? (
           <button onClick={() => open("/billing/portal")} disabled={!isAdmin || busy} className={SECONDARY_BUTTON}>
             Manage billing
           </button>
@@ -77,6 +83,14 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
     >
       <div className="space-y-3">
         {error && <Notice kind="error">{error}</Notice>}
+        {billing.appTrial && (
+          <Notice kind="success">
+            Your free trial is active until {formatDate(billing.trialEndsAt)}. No card is needed
+            {billing.checkoutEnabled
+              ? "; add one any time and you are only charged when the trial ends."
+              : ". We will let you know before it ends so you can add payment details."}
+          </Notice>
+        )}
         {failing && (
           <Notice kind="error">
             Your last payment failed. Syncing and auto-replies pause {billing.graceDays} days after the failed payment. Your data is kept.

@@ -81,6 +81,9 @@ export class HubSpotInstallService {
       return b;
     });
 
+    // Every business gets the free trial automatically; no card and no Stripe needed.
+    await this.billing.startTrial(brand.id);
+
     const user = await this.users.upsertFromHubSpot(brand.id, {
       hubspotUserId: info.hubspotUserId,
       email: info.userEmail,

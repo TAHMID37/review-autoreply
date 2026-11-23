@@ -73,6 +73,11 @@ export const envSchema = z.object({
     (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
     z.boolean().default(false),
   ),
+  /** When false, nobody can add a card yet: the free trial runs without one. Turn on when live Stripe is ready. */
+  BILLING_CHECKOUT_ENABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
+    z.boolean().default(true),
+  ),
   /** Days after a failed payment before syncing and auto-replies pause. */
   BILLING_GRACE_DAYS: z.coerce.number().int().min(0).default(7),
 

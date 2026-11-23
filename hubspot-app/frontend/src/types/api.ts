@@ -94,6 +94,10 @@ export interface BillingStatus {
   price: { amount: number; currency: string; interval: string } | null;
   enforced: boolean;
   configured: boolean;
+  /** False until live payments are switched on: the free trial runs without a card. */
+  checkoutEnabled: boolean;
+  /** On a free trial with no card added yet. */
+  appTrial: boolean;
   status: SubscriptionStatus;
   quantity: number;
   syncedLocations: number;
