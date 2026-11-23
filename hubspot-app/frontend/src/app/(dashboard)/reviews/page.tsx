@@ -6,83 +6,98 @@ import { StatTile } from "@/components/reviews/stat-tile";
 import { responseScopeLabel } from "@/lib/response-scope";
 import { Pagination } from "@/components/ui/pagination";
 import { apiFetch } from "@/lib/api-client";
-import { DATE_RANGE_LABEL, DATE_RANGES, withinRange, type DateRange } from "@/lib/date-range";
-import type { Brand, Review, ReviewStats } from "@/types/api";
+import { DATE_RANGE_LABEL, DATE_RANGES, type DateRange } from "@/lib/date-range";
+import type { ReviewPage, ReviewStats } from "@/types/api";
 
 type Tab = "all" | "needsApproval" | "autoReplied";
 
+const SEARCH_DEBOUNCE_MS = 300;
+
+/** The start of the chosen date window as an ISO string, or undefined for all time. */
+function sinceFor(range: DateRange): string | undefined {
+  if (range === "all") return undefined;
+  if (range === "today") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return start.toISOString();
+  }
+  return new Date(Date.now() - (range === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export default function ReviewsPage() {
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [data, setData] = useState<ReviewPage | null>(null);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [tab, setTab] = useState<Tab>("all");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Wait for a pause in typing before asking the server to search.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const load = useCallback(async () => {
     setError(null);
-    const brandQuery = selectedBrandId ? `?brandId=${selectedBrandId}` : "";
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), tab });
+    if (search) params.set("search", search);
+    const since = sinceFor(dateRange);
+    if (since) params.set("since", since);
     try {
-      const [loadedReviews, loadedStats] = await Promise.all([
-        apiFetch<Review[]>(`/reviews${brandQuery}`),
-        apiFetch<ReviewStats>(`/reports/stats${brandQuery}`),
+      const [loaded, loadedStats] = await Promise.all([
+        apiFetch<ReviewPage>(`/reviews/page?${params.toString()}`),
+        apiFetch<ReviewStats>("/reports/stats"),
       ]);
-      setReviews(loadedReviews);
+      setData(loaded);
       setStats(loadedStats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load reviews");
     } finally {
       setIsLoading(false);
     }
-  }, [selectedBrandId]);
-
-  useEffect(() => {
-    apiFetch<Brand[]>("/brands").then(setBrands).catch(() => undefined);
-  }, []);
+  }, [page, pageSize, tab, search, dateRange]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const visibleReviews = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return reviews.filter((review) => {
-      const status = review.reply?.status;
-      if (tab === "needsApproval" && status !== "PENDING_APPROVAL") return false;
-      if (tab === "autoReplied" && status !== "POSTED" && status !== "APPROVED") return false;
-      if (!withinRange(review.reviewedAt, dateRange)) return false;
-      if (!term) return true;
-      return (
-        review.reviewerName.toLowerCase().includes(term) ||
-        review.reviewText.toLowerCase().includes(term)
-      );
-    });
-  }, [reviews, tab, search, dateRange]);
-
-  // Reset to the first page whenever the filtered set changes.
+  // A new filter or page size starts again from page 1 with nothing ticked.
   useEffect(() => {
     setPage(1);
-  }, [tab, search, selectedBrandId, pageSize, dateRange]);
+    setSelected(new Set());
+  }, [tab, search, pageSize, dateRange]);
 
-  const pagedReviews = useMemo(
-    () => visibleReviews.slice((page - 1) * pageSize, page * pageSize),
-    [visibleReviews, page, pageSize],
-  );
+  // Ticks only make sense for the page on screen.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page]);
 
-  const counts = useMemo(
-    () => ({
-      all: reviews.length,
-      needsApproval: reviews.filter((r) => r.reply?.status === "PENDING_APPROVAL").length,
-      autoReplied: reviews.filter((r) => r.reply?.status === "POSTED" || r.reply?.status === "APPROVED")
-        .length,
-    }),
+  const reviews = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const counts = data?.counts ?? { all: 0, needsApproval: 0, autoReplied: 0 };
+
+  const selectableIds = useMemo(
+    () => reviews.filter((r) => r.reply?.status === "PENDING_APPROVAL").map((r) => r.reply!.id),
     [reviews],
   );
+  const allOnPageSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+
+  function toggleOne(replyId: string, on: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(replyId);
+      else next.delete(replyId);
+      return next;
+    });
+  }
 
   async function approve(replyId: string, finalReply: string) {
     await apiFetch(`/replies/${replyId}`, { method: "PATCH", body: JSON.stringify({ finalReply }) });
@@ -93,6 +108,29 @@ export default function ReviewsPage() {
   async function reject(replyId: string) {
     await apiFetch(`/replies/${replyId}/reject`, { method: "POST" });
     await load();
+  }
+
+  async function bulk(action: "approve" | "reject", target: { ids?: string[]; allPending?: boolean }, confirmText: string) {
+    if (!window.confirm(confirmText)) return;
+    setBulkBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await apiFetch<{ done: number; skipped: number }>("/replies/bulk", {
+        method: "POST",
+        body: JSON.stringify({ action, ...target }),
+      });
+      setNotice(
+        `${result.done} repl${result.done === 1 ? "y" : "ies"} ${action === "approve" ? "approved" : "rejected"}` +
+          (result.skipped ? `, ${result.skipped} skipped (already handled).` : "."),
+      );
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk action failed");
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   return (
@@ -111,27 +149,12 @@ export default function ReviewsPage() {
           ))}
         </select>
         <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
           placeholder="Search reviews…"
           className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-brand-pink focus:outline-none"
         />
       </div>
-
-      {/* Single-brand deployment: a brand filter with one option is just noise. */}
-      {brands.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <BrandChip label="All brands" active={selectedBrandId === null} onClick={() => setSelectedBrandId(null)} />
-          {brands.map((brand) => (
-            <BrandChip
-              key={brand.id}
-              label={brand.name}
-              active={selectedBrandId === brand.id}
-              onClick={() => setSelectedBrandId(brand.id)}
-            />
-          ))}
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-4 border-b border-line text-sm">
         <TabButton label="All" count={counts.all} active={tab === "all"} onClick={() => setTab("all")} />
@@ -163,44 +186,79 @@ export default function ReviewsPage() {
         </div>
       )}
 
+      {counts.needsApproval > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-2.5 text-sm">
+          <label className="flex items-center gap-2 text-ink">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand-pink"
+              checked={allOnPageSelected}
+              disabled={selectableIds.length === 0 || bulkBusy}
+              onChange={(e) => setSelected(e.target.checked ? new Set(selectableIds) : new Set())}
+            />
+            Select all waiting on this page ({selectableIds.length})
+          </label>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              disabled={selected.size === 0 || bulkBusy}
+              onClick={() =>
+                bulk("approve", { ids: [...selected] }, `Approve ${selected.size} selected repl${selected.size === 1 ? "y" : "ies"}? They will be posted to Google.`)
+              }
+              className="rounded-md bg-brand-pink px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-pinkDark disabled:opacity-50"
+            >
+              Approve selected ({selected.size})
+            </button>
+            <button
+              disabled={selected.size === 0 || bulkBusy}
+              onClick={() => bulk("reject", { ids: [...selected] }, `Reject ${selected.size} selected repl${selected.size === 1 ? "y" : "ies"}? Nothing will be posted for them.`)}
+              className="rounded-md border border-line bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface disabled:opacity-50"
+            >
+              Reject selected
+            </button>
+            <button
+              disabled={bulkBusy}
+              onClick={() =>
+                bulk(
+                  "approve",
+                  { allPending: true },
+                  `Approve ALL ${counts.needsApproval} replies waiting for approval? This includes low-rated and sensitive reviews that are normally held for a person to read. They will be posted to Google.`,
+                )
+              }
+              className="rounded-md border border-line bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface disabled:opacity-50"
+            >
+              Approve all {counts.needsApproval} waiting
+            </button>
+          </div>
+        </div>
+      )}
+
+      {notice && <p className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {isLoading && <p className="text-sm text-gray-500">Loading reviews…</p>}
 
-      {!isLoading && visibleReviews.length === 0 && (
+      {!isLoading && reviews.length === 0 && (
         <p className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
           No reviews match this filter.
         </p>
       )}
 
       <div className="space-y-3">
-        {pagedReviews.map((review) => (
-          <ReviewCard key={review.id} review={review} onApprove={approve} onReject={reject} />
+        {reviews.map((review) => (
+          <ReviewCard
+            key={review.id}
+            review={review}
+            onApprove={approve}
+            onReject={reject}
+            selected={review.reply ? selected.has(review.reply.id) : false}
+            onSelectChange={(on) => review.reply && toggleOne(review.reply.id, on)}
+          />
         ))}
       </div>
 
-      {visibleReviews.length > 0 && (
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={visibleReviews.length}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
+      {total > 0 && (
+        <Pagination page={page} pageSize={pageSize} total={total} onPageChange={setPage} onPageSizeChange={setPageSize} />
       )}
     </div>
-  );
-}
-
-function BrandChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md border px-3 py-1 text-xs font-medium ${
-        active ? "border-brand-navy bg-brand-navy text-white" : "border-gray-300 bg-white text-gray-600"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 

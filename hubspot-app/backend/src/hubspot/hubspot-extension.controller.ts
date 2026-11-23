@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "../locations/reachable";
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, NotFoundException, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ReplyStatus } from "@prisma/client";
 import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
@@ -79,7 +80,7 @@ export class HubSpotExtensionController {
       this.prisma.review.aggregate({ where, _avg: { rating: true } }),
       this.prisma.review.count({ where: { ...where, reply: { status: ReplyStatus.PENDING_APPROVAL } } }),
       this.prisma.review.count({ where: { ...where, reply: { status: ReplyStatus.POSTED } } }),
-      this.prisma.location.count({ where: { brandId, syncEnabled: true } }),
+      this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } }),
       this.prisma.platformAccount.count({ where: { brandId, status: "CONNECTED" } }),
     ]);
     return {

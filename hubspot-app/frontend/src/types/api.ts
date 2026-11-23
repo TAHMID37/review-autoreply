@@ -195,6 +195,24 @@ export interface PlatformAccount {
   locationCount: number;
 }
 
+export interface SyncProgress {
+  state: "idle" | "running" | "done" | "error";
+  step: string;
+  percent: number;
+  locationsDone: number;
+  locationsTotal: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  summary: SyncSummary | null;
+  error: string | null;
+}
+
+export interface ReviewPage {
+  items: Review[];
+  total: number;
+  counts: { all: number; needsApproval: number; autoReplied: number };
+}
+
 export interface SyncSummary {
   accountsSynced: number;
   reviewsSeen: number;

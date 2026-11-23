@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsBoolean, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsDateString, IsEnum, IsIn, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 import { ReplyStatus } from "@prisma/client";
 
 /** Query params for the review inbox. All optional - omitted means "no filter". */
@@ -30,4 +30,28 @@ export class ReviewFiltersDto {
   @Transform(({ value }) => value === "true" || value === true)
   @IsBoolean()
   needsApproval?: boolean;
+
+  /** Server-side paging, used by `GET /reviews/page`. */
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+
+  /** The inbox tab. */
+  @IsOptional()
+  @IsIn(["all", "needsApproval", "autoReplied"])
+  tab?: "all" | "needsApproval" | "autoReplied";
+
+  /** Only reviews left on or after this moment. */
+  @IsOptional()
+  @IsDateString()
+  since?: string;
 }

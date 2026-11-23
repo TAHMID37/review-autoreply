@@ -26,6 +26,33 @@ export interface SyncSummary {
   savedToHubSpot: number;
 }
 
+/** What the dashboard's progress bar shows for one business's sync. */
+export interface SyncProgress {
+  state: "idle" | "running" | "done" | "error";
+  /** Plain-language description of the current step. */
+  step: string;
+  /** 0-100. */
+  percent: number;
+  locationsDone: number;
+  locationsTotal: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  summary: SyncSummary | null;
+  error: string | null;
+}
+
+const IDLE_PROGRESS: SyncProgress = {
+  state: "idle",
+  step: "",
+  percent: 0,
+  locationsDone: 0,
+  locationsTotal: 0,
+  startedAt: null,
+  finishedAt: null,
+  summary: null,
+  error: null,
+};
+
 /**
  * The 15-minute cycle, per business: pull Google reviews for the ticked
  * locations -> store new/edited ones -> draft replies -> post what is due ->
@@ -39,6 +66,8 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ReviewsSyncService.name);
   private timer?: NodeJS.Timeout;
   private readonly running = new Set<string>();
+  /** Latest sync progress per business (in memory: it only matters while a sync runs). */
+  private readonly progress = new Map<string, SyncProgress>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -87,6 +116,28 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
     return total;
   }
 
+  getProgress(brandId: string): SyncProgress {
+    return this.progress.get(brandId) ?? IDLE_PROGRESS;
+  }
+
+  /**
+   * Starts a sync in the background and returns straight away, so the person
+   * can leave the page while it runs; the dashboard polls `getProgress`.
+   */
+  async startBrandSync(brandId: string): Promise<SyncProgress> {
+    if (this.running.has(brandId)) return this.getProgress(brandId);
+    const brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, include: { subscription: true } });
+    if (!this.billing.isServiceActive(brand.subscription)) {
+      throw new Error("Syncing is paused until billing is sorted out. Check the Billing page.");
+    }
+    this.syncBrand(brand).catch((e) => this.logger.error(`Sync failed for business ${brandId}: ${e instanceof Error ? e.message : e}`));
+    return this.getProgress(brandId);
+  }
+
+  private setProgress(brandId: string, patch: Partial<SyncProgress>): void {
+    this.progress.set(brandId, { ...this.getProgress(brandId), ...patch });
+  }
+
   async syncBrandById(brandId: string): Promise<SyncSummary> {
     const brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, include: { subscription: true } });
     if (!this.billing.isServiceActive(brand.subscription)) {
@@ -102,16 +153,28 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
       return summary;
     }
     this.running.add(brand.id);
+    this.progress.set(brand.id, { ...IDLE_PROGRESS, state: "running", step: "Starting…", startedAt: new Date().toISOString() });
     const job = await this.prisma.jobRunLog.create({ data: { jobName: "review-sync", brandId: brand.id } });
 
     try {
-      for (const account of await this.accounts.listConnected(brand.id)) {
+      const connected = await this.accounts.listConnected(brand.id);
+      const locationsTotal = await this.prisma.platformLocation.count({
+        where: { platformAccountId: { in: connected.map((a) => a.id) }, location: { syncEnabled: true } },
+      });
+      // Each location is a step, plus drafting/posting and saving to HubSpot.
+      const totalSteps = locationsTotal + 2;
+      let locationsDone = 0;
+      this.setProgress(brand.id, { locationsTotal, step: locationsTotal ? "Reading reviews from Google…" : "Nothing ticked to sync" });
+
+      for (const account of connected) {
         const token = await this.accounts.getValidAccessToken(account);
         const links = await this.prisma.platformLocation.findMany({
           where: { platformAccountId: account.id, location: { syncEnabled: true } },
+          include: { location: { select: { name: true } } },
         });
 
         for (const link of links) {
+          this.setProgress(brand.id, { step: `Reading reviews: ${link.location.name}` });
           const { accountName, locationName } = splitResource(link.externalLocationId);
           const { reviews, allExternalIds, answered, summary: googleSummary } = await this.google.listReviews(token, accountName, locationName);
           if (googleSummary) {
@@ -147,18 +210,23 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
           if (allExternalIds.length > 0) {
             summary.removed += await this.reviews.reconcileRemoved(link.locationId, allExternalIds);
           }
+          locationsDone++;
+          this.setProgress(brand.id, { locationsDone, percent: Math.round((locationsDone / totalSteps) * 100) });
         }
         summary.accountsSynced++;
       }
 
+      this.setProgress(brand.id, { step: "Drafting replies…" });
       const drafted = await this.processor.processPending(brand.id);
       summary.processed = drafted.processed;
       summary.failed = drafted.failed;
 
       summary.posted = (await this.poster.postDue(brand)).posted;
+      this.setProgress(brand.id, { step: "Saving reviews to HubSpot…", percent: Math.round(((locationsTotal + 1) / totalSteps) * 100) });
 
       summary.savedToHubSpot = await this.saveToHubSpot(brand);
       summary.businessesSynced = 1;
+      this.setProgress(brand.id, { state: "done", step: "Finished", percent: 100, finishedAt: new Date().toISOString(), summary });
 
       await this.prisma.jobRunLog.update({
         where: { id: job.id },
@@ -177,6 +245,7 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
         where: { id: job.id },
         data: { finishedAt: new Date(), status: JobStatus.FAILED, error: message },
       });
+      this.setProgress(brand.id, { state: "error", step: "Stopped", finishedAt: new Date().toISOString(), error: message });
       throw error;
     } finally {
       this.running.delete(brand.id);

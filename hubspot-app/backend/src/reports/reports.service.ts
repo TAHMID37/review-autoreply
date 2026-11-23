@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "../locations/reachable";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, ReplyStatus } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -136,7 +137,7 @@ export class ReportsService {
   async getRatingGoal(brandId: string, target: number, locationId?: string, roundedTarget = true): Promise<RatingGoalReport> {
     if (locationId) await this.assertLocation(brandId, locationId);
     const locations = await this.prisma.location.findMany({
-      where: { brandId, syncEnabled: true, ...(locationId ? { id: locationId } : {}) },
+      where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION, ...(locationId ? { id: locationId } : {}) },
       select: { id: true, name: true, googleAverageRating: true, googleTotalReviews: true },
     });
 

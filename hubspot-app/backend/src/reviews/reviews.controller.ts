@@ -25,6 +25,12 @@ export class ReviewsController {
     return this.reviews.findAll(user.brandId, filters);
   }
 
+  /** A server-side page of reviews plus tab counts, for the Reviews screen. */
+  @Get("page")
+  findPage(@CurrentUser() user: AuthUserDto, @Query() filters: ReviewFiltersDto) {
+    return this.reviews.findPage(user.brandId, filters);
+  }
+
   @Get(":id")
   findById(@CurrentUser() user: AuthUserDto, @Param("id") id: string) {
     return this.reviews.findById(user.brandId, id);

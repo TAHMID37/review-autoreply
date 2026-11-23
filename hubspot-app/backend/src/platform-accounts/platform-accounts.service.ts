@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Platform, PlatformAccount, PlatformAccountStatus } from "@prisma/client";
+import { BillingService } from "../billing/billing.service";
 import { TokenVaultService } from "../common/crypto/token-vault.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { GoogleOAuthService } from "./google-oauth.service";
@@ -18,6 +19,7 @@ export class PlatformAccountsService {
     private readonly oauth: GoogleOAuthService,
     private readonly google: GoogleReviewsClient,
     private readonly vault: TokenVaultService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -59,6 +61,9 @@ export class PlatformAccountsService {
     });
 
     const locationsFound = await this.discoverLocations(account, tokens.accessToken);
+    // One Google login per business: connecting a different one replaces the
+    // earlier login and drops the locations that only it could reach.
+    await this.replaceOtherLogins(brandId, account.id);
     return { accountId: account.id, locationsFound };
   }
 
@@ -170,7 +175,44 @@ export class PlatformAccountsService {
       where: { id },
       data: { status: PlatformAccountStatus.DISCONNECTED, accessToken: "", refreshToken: "" },
     });
+    await this.prisma.platformLocation.deleteMany({ where: { platformAccountId: id } });
+    await this.removeOrphanLocations(brandId);
     return { disconnected: true };
+  }
+
+  /**
+   * Revokes and removes every other Google login of the business, then drops
+   * the locations nothing can reach any more (with their stored reviews), so
+   * the dashboard only ever shows the Google account that is connected now.
+   */
+  private async replaceOtherLogins(brandId: string, keepAccountId: string): Promise<void> {
+    const others = await this.prisma.platformAccount.findMany({ where: { brandId, id: { not: keepAccountId } } });
+    for (const other of others) {
+      if (other.status !== PlatformAccountStatus.DISCONNECTED && other.refreshToken) {
+        try {
+          await this.oauth.revoke(this.vault.decrypt(other.refreshToken));
+        } catch (error) {
+          this.logger.warn(`Google revoke failed for ${other.id} (continuing): ${error instanceof Error ? error.message : error}`);
+        }
+      }
+    }
+    if (others.length > 0) {
+      // Cascades to the old login's location links.
+      await this.prisma.platformAccount.deleteMany({ where: { brandId, id: { not: keepAccountId } } });
+    }
+    await this.removeOrphanLocations(brandId);
+  }
+
+  /** Deletes locations (and their reviews) that no connected Google login reaches. */
+  private async removeOrphanLocations(brandId: string): Promise<void> {
+    const { count } = await this.prisma.location.deleteMany({ where: { brandId, platformLocations: { none: {} } } });
+    if (count > 0) {
+      this.logger.log(`Business ${brandId}: removed ${count} location(s) no longer reachable by the connected Google login.`);
+      // Billing is per ticked location, so keep it in step.
+      await this.billing
+        .syncQuantity(brandId)
+        .catch((e) => this.logger.error(`Billing quantity update failed for ${brandId}: ${e instanceof Error ? e.message : e}`));
+    }
   }
 
   async findByIdOrThrow(brandId: string, id: string): Promise<PlatformAccount> {

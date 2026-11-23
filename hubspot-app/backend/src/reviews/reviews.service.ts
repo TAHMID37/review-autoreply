@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "../locations/reachable";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Platform, Prisma, ReplyStatus, ReviewStatus } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -104,7 +105,7 @@ export class ReviewsService {
    *  business always comes from the signed-in session. */
   findAll(brandId: string, filters: ReviewFiltersDto): Promise<ReviewWithDetail[]> {
     // Hide reviews Google no longer serves (filtered/deleted).
-    const where: Prisma.ReviewWhereInput = { removedAt: null, location: { brandId } };
+    const where: Prisma.ReviewWhereInput = { removedAt: null, location: { brandId, ...REACHABLE_LOCATION } };
 
     if (filters.locationId) {
       where.locationId = filters.locationId;
@@ -130,6 +131,41 @@ export class ReviewsService {
       // well beyond this, switch this endpoint to server-side pagination.
       take: 2000,
     });
+  }
+
+  /** One page of the review inbox, filtered and counted on the server so a
+   *  business with thousands of reviews never loads them all at once. */
+  async findPage(brandId: string, filters: ReviewFiltersDto) {
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 25;
+    const base: Prisma.ReviewWhereInput = { removedAt: null, location: { brandId, ...REACHABLE_LOCATION } };
+    if (filters.locationId) base.locationId = filters.locationId;
+
+    const where: Prisma.ReviewWhereInput = { ...base };
+    if (filters.tab === "needsApproval") where.reply = { status: ReplyStatus.PENDING_APPROVAL };
+    if (filters.tab === "autoReplied") where.reply = { status: { in: [ReplyStatus.POSTED, ReplyStatus.APPROVED] } };
+    if (filters.since) where.reviewedAt = { gte: new Date(filters.since) };
+    if (filters.search) {
+      where.OR = [
+        { reviewerName: { contains: filters.search, mode: "insensitive" } },
+        { reviewText: { contains: filters.search, mode: "insensitive" } },
+      ];
+    }
+
+    const [items, total, all, needsApproval, autoReplied] = await Promise.all([
+      this.prisma.review.findMany({
+        where,
+        ...REVIEW_WITH_DETAIL,
+        orderBy: { reviewedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.review.count({ where }),
+      this.prisma.review.count({ where: base }),
+      this.prisma.review.count({ where: { ...base, reply: { status: ReplyStatus.PENDING_APPROVAL } } }),
+      this.prisma.review.count({ where: { ...base, reply: { status: { in: [ReplyStatus.POSTED, ReplyStatus.APPROVED] } } } }),
+    ]);
+    return { items, total, counts: { all, needsApproval, autoReplied } };
   }
 
   async setWidgetVisibility(brandId: string, id: string, hidden: boolean): Promise<{ id: string; hiddenFromWidgets: boolean }> {

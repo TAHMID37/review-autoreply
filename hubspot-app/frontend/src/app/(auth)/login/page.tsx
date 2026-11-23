@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { APP_BRAND } from "@/lib/app-brand";
-import { isSafePath, useAuth } from "@/lib/auth-context";
+import { isSafePath, resolveHomePath, useAuth } from "@/lib/auth-context";
 
 const DEV_LOGIN = process.env.NEXT_PUBLIC_DEV_LOGIN === "true";
 
@@ -30,7 +31,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace(next ?? "/dashboard");
+      if (next) router.replace(next);
+      else resolveHomePath().then((path) => router.replace(path));
     }
   }, [isLoading, user, router, next]);
 
@@ -43,7 +45,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await devSignIn();
-      router.replace(next ?? "/dashboard");
+      router.replace(next ?? (await resolveHomePath()));
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : "Dev sign-in failed");
     }
@@ -76,6 +78,12 @@ export default function LoginPage() {
 
         <p className="mt-6 text-xs leading-relaxed text-muted">
           You approve access on HubSpot&apos;s own screen, so we never see your password.
+        </p>
+
+        <p className="mt-4 text-xs text-muted">
+          By signing in you agree to our{" "}
+          <Link href="/terms" className="underline">Terms</Link> and{" "}
+          <Link href="/privacy" className="underline">Privacy Policy</Link>.
         </p>
 
         {DEV_LOGIN && (

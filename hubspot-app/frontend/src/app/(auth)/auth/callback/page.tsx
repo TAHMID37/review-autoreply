@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isSafePath, useAuth } from "@/lib/auth-context";
+import { isSafePath, resolveHomePath, useAuth } from "@/lib/auth-context";
 
 /** Where HubSpot sign-in lands: swaps the one-time code for a session. */
 export default function AuthCallbackPage() {
@@ -24,10 +24,12 @@ export default function AuthCallbackPage() {
       return;
     }
     completeSignIn(code)
-      .then(() => {
-        // A brand-new business goes to setup regardless of where it started.
-        const fallback = isSafePath(serverNext) ? serverNext : "/dashboard";
-        router.replace(serverNext === "/setup" ? "/setup" : takeNextPath(fallback));
+      .then(async () => {
+        // Anyone who has not finished setup goes to setup, wherever they started;
+        // otherwise they land on the page they asked for, or the dashboard.
+        const home = await resolveHomePath();
+        const fallback = isSafePath(serverNext) ? serverNext : home;
+        router.replace(serverNext === "/setup" || home === "/setup" ? "/setup" : takeNextPath(fallback));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Sign-in failed"));
   }, [completeSignIn, takeNextPath, router]);

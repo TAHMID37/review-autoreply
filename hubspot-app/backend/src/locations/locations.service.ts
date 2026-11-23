@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "./reachable";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -13,7 +14,7 @@ export class LocationsService {
 
   findAll(brandId: string) {
     return this.prisma.location.findMany({
-      where: { brandId },
+      where: { brandId, ...REACHABLE_LOCATION },
       orderBy: { name: "asc" },
       include: { _count: { select: { reviews: true } } },
     });
@@ -34,7 +35,7 @@ export class LocationsService {
    */
   async setSelection(brandId: string, locationIds: string[]) {
     const ids = [...new Set(locationIds)];
-    const owned = await this.prisma.location.count({ where: { brandId, id: { in: ids } } });
+    const owned = await this.prisma.location.count({ where: { brandId, id: { in: ids }, ...REACHABLE_LOCATION } });
     if (owned !== ids.length) {
       throw new BadRequestException("One or more locations do not belong to this business.");
     }

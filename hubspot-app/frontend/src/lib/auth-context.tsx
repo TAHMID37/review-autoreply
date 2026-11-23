@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import type { CurrentUser, LoginResponse } from "@/types/api";
+import type { CurrentUser, LoginResponse, SetupStatus } from "@/types/api";
 import { API_URL, apiFetch, clearStoredToken, getStoredToken, storeToken } from "./api-client";
 
 const NEXT_KEY = "review-autoreply-hubspot:next";
@@ -94,6 +94,16 @@ export function useAuth(): AuthContextValue {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
+}
+
+/** Where a signed-in person starts: the setup page until setup is complete, then the dashboard. */
+export async function resolveHomePath(): Promise<string> {
+  try {
+    const setup = await apiFetch<SetupStatus>("/brands/me/setup");
+    return setup.complete ? "/dashboard" : "/setup";
+  } catch {
+    return "/dashboard";
+  }
 }
 
 /** Only same-site paths, so a crafted ?next= can't send someone elsewhere. */

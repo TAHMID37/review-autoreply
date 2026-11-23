@@ -89,11 +89,18 @@ export class PlatformAccountsController {
     return this.accounts.disconnect(user.brandId, id);
   }
 
-  /** "Sync now" for the signed-in business. */
+  /** "Sync now": starts in the background and returns at once; poll `sync/status`. */
   @Post("sync")
   @UseGuards(JwtAuthGuard)
   runSync(@CurrentUser() user: AuthUserDto) {
-    return this.sync.syncBrandById(user.brandId);
+    return this.sync.startBrandSync(user.brandId);
+  }
+
+  /** Live progress of the current (or last) sync, for the progress bar. */
+  @Get("sync/status")
+  @UseGuards(JwtAuthGuard)
+  syncStatus(@CurrentUser() user: AuthUserDto) {
+    return this.sync.getProgress(user.brandId);
   }
 
   /** Post one reply to Google now. */

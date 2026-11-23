@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "../locations/reachable";
 import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
 import { Prisma, Subscription, SubscriptionStatus } from "@prisma/client";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -104,7 +105,7 @@ export class BillingService {
   async getStatus(brandId: string) {
     const [subscription, syncedLocations] = await Promise.all([
       this.prisma.subscription.findUnique({ where: { brandId } }),
-      this.prisma.location.count({ where: { brandId, syncEnabled: true } }),
+      this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } }),
     ]);
     const price = await this.getPrice();
     return {
@@ -130,7 +131,7 @@ export class BillingService {
     if (existing && (existing.status === SubscriptionStatus.ACTIVE || existing.status === SubscriptionStatus.TRIALING)) {
       throw new BadRequestException("This business already has a subscription. Use Manage billing to change it.");
     }
-    const quantity = await this.prisma.location.count({ where: { brandId, syncEnabled: true } });
+    const quantity = await this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } });
     if (quantity === 0) {
       throw new BadRequestException("Pick at least one location before choosing a plan - billing is per location.");
     }
@@ -174,7 +175,7 @@ export class BillingService {
     const sub = await this.prisma.subscription.findUnique({ where: { brandId } });
     if (!sub?.stripeSubscriptionId || sub.status === SubscriptionStatus.CANCELED) return;
 
-    const quantity = Math.max(1, await this.prisma.location.count({ where: { brandId, syncEnabled: true } }));
+    const quantity = Math.max(1, await this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } }));
     if (quantity === sub.quantity) return;
 
     const remote = await this.stripe.request<StripeSubscription>("GET", `/subscriptions/${sub.stripeSubscriptionId}`);

@@ -35,7 +35,7 @@ export class GoogleOAuthService {
       scope: GOOGLE_BUSINESS_SCOPE,
       access_type: "offline",
       include_granted_scopes: "true",
-      prompt: "consent",
+      prompt: "select_account consent",
       state,
     });
     return `${AUTH_ENDPOINT}?${params.toString()}`;

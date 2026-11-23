@@ -9,9 +9,12 @@ interface ReviewCardProps {
   review: Review;
   onApprove: (replyId: string, finalReply: string) => Promise<void>;
   onReject: (replyId: string) => Promise<void>;
+  /** When set, a tick box lets the card join a bulk approve/reject. */
+  selected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
 }
 
-export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
+export function ReviewCard({ review, onApprove, onReject, selected, onSelectChange }: ReviewCardProps) {
   const { reply } = review;
   const needsApproval = reply?.status === "PENDING_APPROVAL";
   // Answered by hand on Google, outside this dashboard (see GOOGLE_OWNER_PROVIDER).
@@ -33,6 +36,15 @@ export function ReviewCard({ review, onApprove, onReject }: ReviewCardProps) {
   return (
     <article className="rounded-xl border border-line bg-white p-4 shadow-card">
       <div className="flex items-start gap-3">
+        {needsApproval && onSelectChange && (
+          <input
+            type="checkbox"
+            aria-label={`Select the review by ${review.reviewerName}`}
+            className="mt-2 h-4 w-4 flex-none accent-brand-pink"
+            checked={!!selected}
+            onChange={(e) => onSelectChange(e.target.checked)}
+          />
+        )}
         <Avatar name={review.reviewerName} />
 
         <div className="min-w-0 flex-1">

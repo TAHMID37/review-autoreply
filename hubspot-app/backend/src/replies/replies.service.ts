@@ -49,6 +49,36 @@ export class RepliesService {
     return this.updateAndMarkDirty(reply, { status: ReplyStatus.REJECTED, approvedByUserId: rejectedByUserId });
   }
 
+  /**
+   * Approves or rejects many drafts at once: the given reply ids, or every reply
+   * waiting for approval. Only replies still waiting are touched; the rest are
+   * counted as skipped.
+   */
+  async bulkDecide(
+    brandId: string,
+    userId: string,
+    action: "approve" | "reject",
+    target: { ids?: string[]; allPending?: boolean },
+  ): Promise<{ done: number; skipped: number }> {
+    const waiting = await this.prisma.reply.findMany({
+      where: {
+        status: ReplyStatus.PENDING_APPROVAL,
+        review: { location: { brandId }, removedAt: null },
+        ...(target.allPending ? {} : { id: { in: target.ids ?? [] } }),
+      },
+    });
+    for (const reply of waiting) {
+      await this.updateAndMarkDirty(
+        reply,
+        action === "approve"
+          ? { status: ReplyStatus.APPROVED, approvedByUserId: userId, finalReply: reply.finalReply ?? reply.aiDraft }
+          : { status: ReplyStatus.REJECTED, approvedByUserId: userId },
+      );
+    }
+    const asked = target.allPending ? waiting.length : new Set(target.ids ?? []).size;
+    return { done: waiting.length, skipped: Math.max(0, asked - waiting.length) };
+  }
+
   /** The text that should actually be published. */
   resolveText(reply: Reply): string {
     return reply.finalReply?.trim() || reply.aiDraft;

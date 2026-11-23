@@ -1,3 +1,4 @@
+import { REACHABLE_LOCATION } from "../locations/reachable";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { HubSpotInstallStatus, PlatformAccountStatus } from "@prisma/client";
 import { BillingService } from "../billing/billing.service";
@@ -51,8 +52,8 @@ export class BrandsService {
       this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, select: { autoReplyEnabled: true } }),
       this.prisma.hubSpotInstallation.findUnique({ where: { brandId }, select: { status: true } }),
       this.prisma.platformAccount.count({ where: { brandId, status: PlatformAccountStatus.CONNECTED } }),
-      this.prisma.location.count({ where: { brandId } }),
-      this.prisma.location.count({ where: { brandId, syncEnabled: true } }),
+      this.prisma.location.count({ where: { brandId, ...REACHABLE_LOCATION } }),
+      this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } }),
       this.prisma.subscription.findUnique({ where: { brandId } }),
     ]);
     const steps = {
