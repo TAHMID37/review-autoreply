@@ -55,6 +55,13 @@ export const envSchema = z.object({
     ),
   HUBSPOT_OPTIONAL_SCOPES: z.string().default(""),
 
+  // HubSpot does not push uninstall events; this reads them from HubSpot's journal.
+  HUBSPOT_UNINSTALL_POLL_ENABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() === "true" : v),
+    z.boolean().default(false),
+  ),
+  HUBSPOT_UNINSTALL_POLL_INTERVAL_MIN: z.coerce.number().int().positive().default(5),
+
   // Billing (Stripe). Leave STRIPE_SECRET_KEY blank in development to treat
   // every business as paid; BILLING_ENFORCED=false does the same on purpose.
   STRIPE_SECRET_KEY: z.preprocess(blankToUndefined, z.string().optional()),

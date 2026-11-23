@@ -36,10 +36,10 @@ ReviewTune ("AI Review Management") is a multi-business HubSpot Marketplace app.
 - [x] Google Cloud project: In production, External, scope `business.manage` (non-sensitive), branding verified, API quota approved (section 6)
 
 ### Still to do (in order)
-- [ ] Test connecting Google from a Google account OUTSIDE the iBusinessFormula organisation (the one real test we can't run for ourselves)
-- [ ] Install from a second HubSpot account (proves data separation; counts toward the 3 installs)
+- [x] Google connect from an outside account tested (23 Nov, works)
+- [x] Second HubSpot account install tested (23 Nov, works)
 - [ ] Stripe: keys, price, webhook (section 7)
-- [ ] Subscribe the HubSpot app to the uninstall event; test uninstall and reinstall for real (HubSpot's event payload is unconfirmed; the handler logs unknown types)
+- [ ] Test a real uninstall: uninstall from a test HubSpot account, wait up to 5 min, check `journalctl -u reviewtune-api | grep -i uninstall` (poller built and subscribed 23 Nov; payload format unconfirmed)
 - [ ] Remove the `http://localhost:4020/...` redirect URL from `hubspot-project/src/app/app-hsmeta.json` and re-upload, before submitting the listing
 - [ ] Email alerts: set up SMTP (section 7)
 - [ ] Turn on scheduled sync (`REVIEW_SYNC_ENABLED=true`), then posting (`AUTO_POST_ENABLED=true`) once ready
@@ -129,7 +129,7 @@ Never paste secret values into this file or into chat if avoidable. Put them in 
 - Redirect URLs registered: the live URL `https://reviewtune.ibusinessformula.com.au/api/hubspot/oauth/callback` and `http://localhost:4020/hubspot/oauth/callback` (remove the localhost one before submitting).
 - Redeploy: `cd hubspot-project && npx --yes -p @hubspot/cli@8.18.0 hs project upload`
 - Validate first: `npm run hs:validate`
-- Uninstall webhook endpoint: `POST /api/hubspot/webhooks` (signature-verified). The subscription is not set up yet.
+- Uninstall detection: HubSpot has no uninstall push. The API polls HubSpot's webhooks journal every 5 min (`HUBSPOT_UNINSTALL_POLL_ENABLED=true`), subscription id 60446309 (APP_LIFECYCLE_EVENT 4-1916193), app-level client-credentials token. A reinstall after a missed uninstall is also detected at sign-in. The old `/hubspot/webhooks` endpoint was removed. The uninstall payload format is still unconfirmed until a real uninstall is observed.
 
 ## 9. Related: ACE and MultiSkills (separate apps, same server)
 
@@ -155,6 +155,7 @@ Never paste secret values into this file or into chat if avoidable. Put them in 
 
 ## 12. Change log
 
+- 23 Nov 2026: Stripe sandbox set up on the server (US$25 price, webhook, 90-day trial, BILLING_ENFORCED=true); checkout tested; uninstall poller built; reinstall after a missed uninstall now restarts setup.
 - 23 Nov 2026 (built locally, NOT yet deployed): sign-in lands on Setup until setup is complete; "Save and sync" sits in the Locations card; sync runs in the background with a progress bar (also shown on every page); connecting a different Google login replaces the old one and removes its locations; Reviews page paginates on the server and has bulk approve/reject.
 - 20 Nov 2026: rebranded to ReviewTune; added Privacy, Terms and a public home page; deployed to the live server; HubSpot project build #3 uploaded; first install, Google connect and sync tested; Google project switched to External, In production; branding verified; quota confirmed.
 - 19 Nov 2026: security hardening, uninstall webhook and 30-day retention built; brand assets received.

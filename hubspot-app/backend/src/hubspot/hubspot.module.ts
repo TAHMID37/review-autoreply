@@ -6,11 +6,11 @@ import { UsersModule } from "../users/users.module";
 import { HubSpotApiClient } from "./hubspot-api.client";
 import { HubSpotCrmService } from "./hubspot-crm.service";
 import { HubSpotExtensionController } from "./hubspot-extension.controller";
+import { HubSpotLifecyclePollerService } from "./hubspot-lifecycle-poller.service";
 import { HubSpotInstallService } from "./hubspot-install.service";
 import { HubSpotOAuthService } from "./hubspot-oauth.service";
 import { HubSpotSignatureGuard } from "./hubspot-signature.guard";
 import { HubSpotController } from "./hubspot.controller";
-import { HubSpotWebhooksController } from "./hubspot-webhooks.controller";
 
 /**
  * Everything HubSpot: install / sign-in (OAuth), the authorised API client,
@@ -18,8 +18,8 @@ import { HubSpotWebhooksController } from "./hubspot-webhooks.controller";
  */
 @Module({
   imports: [AuthModule, UsersModule, RepliesModule, BillingModule],
-  controllers: [HubSpotController, HubSpotExtensionController, HubSpotWebhooksController],
-  providers: [HubSpotOAuthService, HubSpotApiClient, HubSpotCrmService, HubSpotInstallService, HubSpotSignatureGuard],
+  controllers: [HubSpotController, HubSpotExtensionController],
+  providers: [HubSpotOAuthService, HubSpotApiClient, HubSpotCrmService, HubSpotInstallService, HubSpotSignatureGuard, HubSpotLifecyclePollerService],
   exports: [HubSpotCrmService, HubSpotApiClient],
 })
 export class HubSpotModule {}
