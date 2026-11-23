@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { HttpException, HttpStatus, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Brand, BrandStatus, HubSpotInstallStatus, JobStatus, Platform } from "@prisma/client";
 import { BillingService } from "../billing/billing.service";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -128,7 +128,7 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
     if (this.running.has(brandId)) return this.getProgress(brandId);
     const brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, include: { subscription: true } });
     if (!this.billing.isServiceActive(brand.subscription)) {
-      throw new Error("Syncing is paused until billing is sorted out. Check the Billing page.");
+      throw new HttpException("Syncing is paused until you choose a plan. Choose one on the Billing page.", HttpStatus.PAYMENT_REQUIRED);
     }
     this.syncBrand(brand).catch((e) => this.logger.error(`Sync failed for business ${brandId}: ${e instanceof Error ? e.message : e}`));
     return this.getProgress(brandId);
@@ -141,7 +141,7 @@ export class ReviewsSyncService implements OnModuleInit, OnModuleDestroy {
   async syncBrandById(brandId: string): Promise<SyncSummary> {
     const brand = await this.prisma.brand.findUniqueOrThrow({ where: { id: brandId }, include: { subscription: true } });
     if (!this.billing.isServiceActive(brand.subscription)) {
-      throw new Error("Syncing is paused until billing is sorted out. Check the Billing page.");
+      throw new HttpException("Syncing is paused until you choose a plan. Choose one on the Billing page.", HttpStatus.PAYMENT_REQUIRED);
     }
     return this.syncBrand(brand);
   }

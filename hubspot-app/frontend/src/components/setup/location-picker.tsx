@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 import { useSyncProgress } from "@/lib/use-sync-progress";
 import { useAuth } from "@/lib/auth-context";
@@ -97,7 +98,16 @@ export function LocationPicker({ reloadKey = 0, onSaved }: { reloadKey?: number;
     >
       <div className="space-y-3">
         {error && <Notice kind="error">{error}</Notice>}
-        {sync.error && <Notice kind="error">{sync.error}</Notice>}
+        {sync.error && (
+          <Notice kind="error">
+            {sync.error}{" "}
+            {/plan|billing/i.test(sync.error) && (
+              <Link href="/billing" className="font-semibold underline">
+                Go to Billing
+              </Link>
+            )}
+          </Notice>
+        )}
         {sync.running && sync.progress && <SyncProgressBar progress={sync.progress} />}
         {!sync.running && sync.progress?.state === "error" && sync.justFinished && (
           <Notice kind="error">Sync stopped: {sync.progress.error}</Notice>
