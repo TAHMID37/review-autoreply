@@ -8,7 +8,7 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import { UsersService } from "../users/users.service";
 import { HubSpotApiClient } from "./hubspot-api.client";
 import { HubSpotCrmService } from "./hubspot-crm.service";
-import { HubSpotOAuthService } from "./hubspot-oauth.service";
+import { HubSpotAccessRevokedError, HubSpotOAuthService } from "./hubspot-oauth.service";
 
 export interface InstallResult {
   /** Only set when the caller may sign the person in (the flow carried our state). */
@@ -42,6 +42,7 @@ export class HubSpotInstallService {
     const info = await this.oauth.getTokenInfo(tokens.accessToken);
 
     const existing = await this.prisma.brand.findUnique({ where: { hubspotPortalId: info.portalId } });
+    if (existing) await this.finishMissedUninstall(existing.id);
     const tokenData = {
       accessToken: this.vault.encrypt(tokens.accessToken),
       refreshToken: this.vault.encrypt(tokens.refreshToken),
@@ -95,6 +96,26 @@ export class HubSpotInstallService {
       this.logger.log(`New business installed the app: ${brand.name} (portal ${info.portalId}).`);
     }
     return { loginCode: issueLogin ? await this.auth.createLoginCode(user.id) : undefined, isNewBusiness: !existing };
+  }
+
+  /**
+   * HubSpot does not always tell us when the app is removed. If this business
+   * still looks installed but HubSpot refuses its old refresh token, the app was
+   * uninstalled and is now being installed again: do the uninstall cleanup first
+   * (Google disconnected and revoked, billing cancelled) so the business starts
+   * setup again instead of silently keeping the old connections. A network or
+   * server error proves nothing, so only an explicit refusal counts.
+   */
+  private async finishMissedUninstall(brandId: string): Promise<void> {
+    const installation = await this.prisma.hubSpotInstallation.findUnique({ where: { brandId } });
+    if (!installation || installation.status !== HubSpotInstallStatus.INSTALLED || !installation.refreshToken) return;
+    try {
+      await this.oauth.refresh(this.vault.decrypt(installation.refreshToken));
+    } catch (error) {
+      if (error instanceof HubSpotAccessRevokedError) {
+        await this.api.markUninstalled(brandId, "the app was uninstalled in HubSpot and has now been installed again");
+      }
+    }
   }
 
   /**
