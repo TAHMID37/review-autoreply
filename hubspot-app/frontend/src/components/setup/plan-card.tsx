@@ -47,11 +47,13 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
   }
 
   const hasPlan = billing.status !== "NONE" && billing.status !== "CANCELED";
+  // No trial and no plan, and card payments are not open: nothing the person can press.
+  const stuck = billing.enforced && !hasPlan && !billing.checkoutEnabled;
   const failing = billing.status === "PAST_DUE" || billing.status === "UNPAID";
 
   return (
     <Card
-      title="Plan"
+      title={billing.appTrial ? "Your free trial" : "Plan"}
       description={
         billing.enforced
           ? `${billing.price ? `${formatPrice(billing.price)} per location, billed ${billing.price.interval}ly. ` : "Billed monthly per synced location. "}Adding or removing a location updates your bill automatically.`
@@ -59,6 +61,7 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
       }
       action={
         billing.enforced &&
+        !stuck &&
         (billing.appTrial ? (
           billing.checkoutEnabled && (
             <button onClick={() => open("/billing/checkout")} disabled={!isAdmin || busy || billing.syncedLocations === 0} className={PRIMARY_BUTTON}>
@@ -91,13 +94,18 @@ export function PlanCard({ reloadKey = 0 }: { reloadKey?: number }) {
               : ". We will let you know before it ends so you can add payment details."}
           </Notice>
         )}
+        {stuck && (
+          <Notice kind="info">
+            Your plan is not active, so syncing is paused. Email support@ibusinessformula.com.au and we will switch your free trial on.
+          </Notice>
+        )}
         {failing && (
           <Notice kind="error">
             Your last payment failed. Syncing and auto-replies pause {billing.graceDays} days after the failed payment. Your data is kept.
             Update your card under Manage billing.
           </Notice>
         )}
-        {billing.enforced && (
+        {billing.enforced && hasPlan && (
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Status" value={STATUS_LABEL[billing.status]} />
             {billing.price && billing.status !== "NONE" && (

@@ -26,9 +26,9 @@ export default function SetupPage() {
   const steps = setup?.steps;
   const items: { done: boolean; label: string; optional?: boolean }[] = [
     { done: !!steps?.hubspotConnected, label: "Install in HubSpot" },
+    ...(setup?.billingEnforced ? [{ done: !!steps?.planChosen, label: "Start your free trial" }] : []),
     { done: !!steps?.googleConnected, label: "Connect Google" },
     { done: !!steps?.locationsSelected, label: "Pick locations" },
-    ...(setup?.billingEnforced ? [{ done: !!steps?.planChosen, label: "Choose a plan" }] : []),
     { done: !!steps?.autoReplyEnabled, label: "Turn on auto-replies", optional: true },
   ];
 
@@ -65,9 +65,9 @@ export default function SetupPage() {
         </p>
       )}
 
+      {setup?.billingEnforced && <PlanCard reloadKey={reloadKey} />}
       <GoogleConnectCard returnTo="setup" onChange={bump} />
       {steps?.googleConnected && <LocationPicker reloadKey={reloadKey} onSaved={bump} />}
-      {setup?.billingEnforced && steps?.locationsSelected && <PlanCard reloadKey={reloadKey} />}
       {brand && steps?.locationsSelected && <AutoReplyCard brand={brand} onChange={(b) => { setBrand(b); bump(); }} />}
     </div>
   );

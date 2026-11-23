@@ -126,6 +126,8 @@ export class BillingService {
   }
 
   async getStatus(brandId: string) {
+    // A business that somehow has no record yet (installed before free trials) gets its trial now.
+    await this.startTrial(brandId);
     const [subscription, syncedLocations] = await Promise.all([
       this.prisma.subscription.findUnique({ where: { brandId } }),
       this.prisma.location.count({ where: { brandId, syncEnabled: true, ...REACHABLE_LOCATION } }),
