@@ -17,7 +17,7 @@ import {
 import { apiFetch } from "@/lib/api-client";
 import { PropertiesNotice } from "@/components/setup/properties-notice";
 import { useAuth } from "@/lib/auth-context";
-import type { AuthUser, Brand, NewContactPolicy, ReportFrequency } from "@/types/api";
+import type { AuthUser, Brand, NewContactPolicy } from "@/types/api";
 
 export default function SettingsPage() {
   const [brand, setBrand] = useState<Brand | null>(null);
@@ -56,7 +56,6 @@ export default function SettingsPage() {
       <AutoReplyCard brand={brand} onChange={setBrand} />
       <HubSpotContactsCard brand={brand} onSave={save} />
       <NotificationsCard brand={brand} onSave={save} />
-      <ReportEmailCard brand={brand} onSave={save} />
       <TeamCard />
       <UninstallCard brand={brand} />
     </div>
@@ -183,49 +182,6 @@ function NotificationsCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) 
         <button onClick={() => run({ alertEmails: parsed })} disabled={!changed || isSaving} className={PRIMARY_BUTTON}>
           {isSaving ? "Saving…" : "Save"}
         </button>
-      </div>
-    </Card>
-  );
-}
-
-const REPORT_OPTIONS: { value: ReportFrequency; label: string; hint: string }[] = [
-  { value: "NONE", label: "Off", hint: "No report emails." },
-  { value: "WEEKLY", label: "Weekly", hint: "Every Monday, covering the week just finished." },
-  { value: "MONTHLY", label: "Monthly", hint: "On the 1st, covering the month just finished." },
-];
-
-function ReportEmailCard({ brand, onSave }: { brand: Brand; onSave: SaveFn }) {
-  const { run, isSaving, error, saved } = useSaver(onSave);
-  const hasEmails = brand.alertEmails.length > 0;
-
-  return (
-    <Card
-      title="Review report by email"
-      description="A short summary of your Google reviews, with the numbers attached as a CSV. It goes to the same emails as the approval alerts."
-    >
-      <div className="space-y-3">
-        <fieldset className="space-y-2">
-          {REPORT_OPTIONS.map((option) => (
-            <label key={option.value} className="flex items-start gap-2 text-sm text-ink">
-              <input
-                type="radio"
-                name="reportFrequency"
-                className="mt-1"
-                checked={brand.reportFrequency === option.value}
-                disabled={isSaving}
-                onChange={() => run({ reportFrequency: option.value })}
-              />
-              <span>
-                {option.label} <span className="text-muted">· {option.hint}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        {brand.reportFrequency !== "NONE" && !hasEmails && (
-          <Notice kind="error">Add at least one email under Approval alerts, or no report can be sent.</Notice>
-        )}
-        {error && <Notice kind="error">{error}</Notice>}
-        {saved && !error && <Notice kind="success">Saved.</Notice>}
       </div>
     </Card>
   );

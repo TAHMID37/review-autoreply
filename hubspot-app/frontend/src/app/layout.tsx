@@ -12,6 +12,7 @@ const raleway = Raleway({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://reviewtune.ibusinessformula.com.au"),
   title: APP_BRAND.displayName,
   description: "Google review auto-replies, saved under your HubSpot contacts.",
 };
