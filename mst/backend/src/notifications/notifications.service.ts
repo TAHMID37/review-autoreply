@@ -41,6 +41,32 @@ export class NotificationsService {
     ]);
   }
 
+  /**
+   * Emails the alert address about a low-star review that was NOT held (a
+   * 1-2 star review with no comment is auto-replied). Held reviews already
+   * send their own alert through notifyNeedsApproval, so nobody gets two.
+   */
+  async notifyNegativeReview(review: ReviewWithDetail): Promise<void> {
+    const recipients = this.env.ALERT_EMAIL_TO?.trim() ?? "";
+    const message = [
+      `New ${review.rating}-star review`,
+      `${review.location.brand.name} — ${review.location.name}`,
+      `From: ${review.reviewerName}`,
+      "",
+      `"${review.reviewText || "(no written comment)"}"`,
+      "",
+      "An automatic reply is queued and will be posted after its delay. You can edit or stop it in the dashboard:",
+      this.env.WEB_APP_URL,
+    ].join("\n");
+
+    await this.dispatch(
+      NotificationChannel.EMAIL,
+      review.id,
+      () => this.email.send(recipients, `Negative review (${review.rating}★) — ${review.location.brand.name}`, message),
+      this.email.isEnabled && recipients.length > 0,
+    );
+  }
+
   private async dispatch(
     channel: NotificationChannel,
     reviewId: string,
@@ -75,7 +101,8 @@ export class NotificationsService {
       "",
       `Why it was held: ${reason}`,
       "",
-      "Approve or edit the drafted reply in the dashboard.",
+      "Approve or edit the drafted reply in the dashboard:",
+      this.env.WEB_APP_URL,
     ].join("\n");
   }
 }

@@ -100,6 +100,8 @@ export class ReviewProcessorService {
 
     if (status === ReplyStatus.PENDING_APPROVAL) {
       await this.notifications.notifyNeedsApproval(review, selection.note ?? assessment.reason);
+    } else if (review.rating <= 2) {
+      await this.notifications.notifyNegativeReview(review);
     }
 
     this.logger.log(
